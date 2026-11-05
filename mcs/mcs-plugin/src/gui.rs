@@ -22,11 +22,13 @@ pub struct GuiState {
     pub look: Look,
     /// Set (A=0, B=1) in modifica per ciascun modulo: Tone, Limiter, Filter, EQ finale, Clipper.
     pub set_sel: [usize; 5],
+    /// Fattore di ingrandimento dell'interfaccia (0,6 – 1,4).
+    pub zoom: f32,
 }
 
 impl Default for GuiState {
     fn default() -> Self {
-        GuiState { look: Look::Mix, set_sel: [0; 5] }
+        GuiState { look: Look::Mix, set_sel: [0; 5], zoom: 0.8 }
     }
 }
 
@@ -343,6 +345,7 @@ fn analysis_panel(ui: &mut Ui, shared: &Shared, th: Theme) {
 
 pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, params: &McsParams, shared: &Shared, egui_state: &EguiState) {
     ctx.request_repaint_after(Duration::from_millis(33));
+    ctx.set_zoom_factor(state.zoom);
     ResizableWindow::new("mcs-window").min_size(Vec2::new(420.0, 400.0)).show(ctx, egui_state, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").strong().size(20.0).color(Color32::from_rgb(230, 220, 190)));
@@ -351,6 +354,15 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
                 if ui.selectable_label(state.look == l, name).clicked() {
                     state.look = l;
                 }
+            }
+            ui.add_space(12.0);
+            ui.label("Zoom");
+            if ui.button("−").clicked() {
+                state.zoom = (state.zoom - 0.1).max(0.6);
+            }
+            ui.label(format!("{:.0}%", state.zoom * 100.0));
+            if ui.button("+").clicked() {
+                state.zoom = (state.zoom + 0.1).min(1.4);
             }
             ui.add_space(12.0);
             ui.label("Oversampling");
