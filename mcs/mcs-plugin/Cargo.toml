@@ -1,0 +1,24 @@
+[workspace]
+members = ["xtask"]
+
+[package]
+name = "multi_channel_strip"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "multi_channel_strip"
+crate-type = ["cdylib"]
+
+[dependencies]
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683" }
+parking_lot = "0.12"
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "de421011f41a6d10fc8c7a6084e4f4dee0143683", default-features = false, features = ["vst3"] }
+mcs-dsp = { path = "../mcs-dsp" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
