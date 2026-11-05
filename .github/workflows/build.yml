@@ -1,0 +1,21 @@
+name: Build VST3 (Windows)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test DSP
+        working-directory: mcs/mcs-dsp
+        run: cargo test --release
+      - name: Bundle VST3
+        working-directory: mcs/mcs-plugin
+        run: cargo xtask bundle multi_channel_strip --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MultiChannelStrip-VST3
+          path: mcs/mcs-plugin/target/bundled/*.vst3
