@@ -18,4 +18,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: MultiChannelStrip-VST3
-          path: mcs/mcs-plugin/target/bundled/*.vst3
+           mcs/target/bundled/*.vst3
