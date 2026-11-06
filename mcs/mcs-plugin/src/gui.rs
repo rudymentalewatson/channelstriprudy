@@ -371,6 +371,23 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
                 shared.reset_lufs.store(true, Relaxed);
             }
         });
+        let (c, nc, ch, ln, it, rs, sr) = (
+            shared.calls.load(Relaxed),
+            shared.no_chain.load(Relaxed),
+            shared.chans.load(Relaxed),
+            shared.len.load(Relaxed),
+            shared.inits.load(Relaxed),
+            shared.resets.load(Relaxed),
+            shared.sr.load(Relaxed),
+        );
+        ui.label(
+            egui::RichText::new(format!(
+                "DIAGNOSI  chiamate audio: {c}  senza catena: {nc}  canali: {ch}  campioni: {ln}  init: {it}  reset: {rs}  SR: {sr:.0}"
+            ))
+            .monospace()
+            .size(11.0)
+            .color(Color32::from_rgb(150, 255, 160)),
+        );
         ui.add_space(6.0);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let wide = ui.available_width() >= 820.0;

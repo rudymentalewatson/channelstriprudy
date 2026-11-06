@@ -9,7 +9,7 @@ use mcs_dsp::{Mode, Module};
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, EguiState};
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering::Relaxed};
 use std::sync::Arc;
 
 mod gui;
@@ -26,6 +26,14 @@ pub struct Shared {
     pub corr: AtomicF32,
     pub gr: AtomicF32,
     pub reset_lufs: AtomicBool,
+    /// Contatori di diagnosi.
+    pub calls: AtomicU32,
+    pub no_chain: AtomicU32,
+    pub chans: AtomicU32,
+    pub len: AtomicU32,
+    pub inits: AtomicU32,
+    pub resets: AtomicU32,
+    pub sr: AtomicF32,
     pub scope: Mutex<Vec<(f32, f32)>>,
 }
 
@@ -43,6 +51,13 @@ impl Default for Shared {
             corr: z(),
             gr: z(),
             reset_lufs: AtomicBool::new(false),
+            calls: AtomicU32::new(0),
+            no_chain: AtomicU32::new(0),
+            chans: AtomicU32::new(0),
+            len: AtomicU32::new(0),
+            inits: AtomicU32::new(0),
+            resets: AtomicU32::new(0),
+            sr: AtomicF32::new(0.0),
             scope: Mutex::new(Vec::with_capacity(512)),
         }
     }
@@ -410,13 +425,14 @@ impl McsParams {
 pub struct MultiChannelStrip {
     params: Arc<McsParams>,
     chain: Option<Chain>,
+    sample_rate: f64,
     last_latency: u32,
     shared: Arc<Shared>,
 }
 
 impl Default for MultiChannelStrip {
     fn default() -> Self {
-        MultiChannelStrip { params: Arc::new(McsParams::default()), chain: None, last_latency: 0, shared: Arc::new(Shared::default()) }
+        MultiChannelStrip { params: Arc::new(McsParams::default()), chain: None, sample_rate: 48000.0, last_latency: 0, shared: Arc::new(Shared::default()) }
     }
 }
 
@@ -455,7 +471,10 @@ impl Plugin for MultiChannelStrip {
     }
 
     fn initialize(&mut self, _layout: &AudioIOLayout, cfg: &BufferConfig, ctx: &mut impl InitContext<Self>) -> bool {
-        let chain = Chain::new(cfg.sample_rate as f64);
+        self.sample_rate = cfg.sample_rate as f64;
+        self.shared.inits.fetch_add(1, Relaxed);
+        self.shared.sr.store(cfg.sample_rate, Relaxed);
+        let chain = Chain::new(self.sample_rate);
         self.last_latency = chain.latency() as u32;
         ctx.set_latency_samples(self.last_latency);
         self.chain = Some(chain);
@@ -463,11 +482,21 @@ impl Plugin for MultiChannelStrip {
     }
 
     fn reset(&mut self) {
-        self.chain = None;
+        self.shared.resets.fetch_add(1, Relaxed);
+        // azzera gli stati interni (code di riverbero dei filtri, inviluppi) senza perdere la catena
+        if self.chain.is_some() {
+            self.chain = Some(Chain::new(self.sample_rate));
+        }
     }
 
     fn process(&mut self, buffer: &mut Buffer, _aux: &mut AuxiliaryBuffers, ctx: &mut impl ProcessContext<Self>) -> ProcessStatus {
-        let Some(chain) = self.chain.as_mut() else { return ProcessStatus::Normal };
+        self.shared.calls.fetch_add(1, Relaxed);
+        self.shared.chans.store(buffer.channels() as u32, Relaxed);
+        self.shared.len.store(buffer.samples() as u32, Relaxed);
+        let Some(chain) = self.chain.as_mut() else {
+            self.shared.no_chain.fetch_add(1, Relaxed);
+            return ProcessStatus::Normal;
+        };
         let p = self.params.to_chain();
         let slices = buffer.as_slice();
         if slices.len() >= 2 {
