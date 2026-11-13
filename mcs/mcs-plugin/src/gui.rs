@@ -274,10 +274,14 @@ fn rack_unit(
 
     ui.scope_builder(UiBuilder::new().max_rect(head), |ui| {
         ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
-        ui.label(egui::RichText::new(title).strong().size(18.0).color(th.text));
-        if let Some(on) = on {
-            toggle(ui, setter, on, "ON", th, Color32::from_rgb(90, 220, 90));
-        }
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(title).strong().size(17.0).color(th.text));
+            if let Some(on) = on {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    toggle(ui, setter, on, "ON", th, Color32::from_rgb(90, 220, 90));
+                });
+            }
+        });
         if let (Some(m), Some(slot)) = (mode, sel_slot) {
             let cur = m.value();
             ui.horizontal(|ui| {
@@ -429,12 +433,12 @@ fn db_of(y: f32, rect: Rect) -> f32 {
 }
 
 /// Grafico della risposta in frequenza: bande del Tone, presenza e filtri finali. I punti delle bande si trascinano.
-fn eq_curve(ui: &mut Ui, setter: &ParamSetter, state: &GuiState, p: &McsParams, sr_in: f32) {
+fn eq_curve(ui: &mut Ui, setter: &ParamSetter, state: &GuiState, p: &McsParams, sr_in: f32, w: f32, h: f32) {
     use mcs_dsp::biquad::{peaking, Cascade};
     use mcs_dsp::tone::{band_coeffs, Shape};
 
     let sr = if sr_in > 1000.0 { sr_in as f64 } else { 48000.0 };
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 150.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, Color32::from_rgb(16, 18, 20));
     painter.rect_stroke(rect, 4.0, Stroke::new(1.5, Color32::from_rgb(70, 66, 58)), StrokeKind::Inside);
@@ -598,8 +602,18 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
                 shared.reset_lufs.store(true, Relaxed);
             }
         });
-        eq_curve(ui, setter, state, params, shared.sr.load(Relaxed));
-        ui.add_space(6.0);
+        ui.horizontal_top(|ui| {
+            let total = ui.available_width();
+            let curve_w = (total - 540.0).max(320.0);
+            eq_curve(ui, setter, state, params, shared.sr.load(Relaxed), curve_w, 178.0);
+            ui.vertical(|ui| {
+                analysis_panel(ui, shared, PLATES[7]);
+            });
+            ui.vertical(|ui| {
+                goniometer(ui, shared, 172.0);
+            });
+        });
+        ui.add_space(4.0);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             rack(ui, setter, state, params, shared);
         });
@@ -613,9 +627,9 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     ui.spacing_mut().item_spacing.y = 5.0;
 
     // INPUT
-    rack_unit(ui, setter, state, 0, 132.0, "INPUT", None, None, None, |ui, _s, th| {
-        knob(ui, setter, &p.in_trim, "TRIM", 56.0, K_INPUT, th);
-        knob(ui, setter, &p.in_tape, "NASTRO", 56.0, K_INPUT, th);
+    rack_unit(ui, setter, state, 0, 114.0, "INPUT", None, None, None, |ui, _s, th| {
+        knob(ui, setter, &p.in_trim, "TRIM", 48.0, K_INPUT, th);
+        knob(ui, setter, &p.in_tape, "NASTRO", 48.0, K_INPUT, th);
         ui.vertical(|ui| {
             toggle(ui, setter, &p.in_pol_l, "POL L", th, amber);
             toggle(ui, setter, &p.in_pol_r, "POL R", th, amber);
@@ -627,7 +641,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // TONE: quattro bande affiancate
-    rack_unit(ui, setter, state, 1, 172.0, "TONE", Some(&p.tone_on), Some(&p.tone_mode), Some(0), |ui, s, th| {
+    rack_unit(ui, setter, state, 1, 156.0, "TONE", Some(&p.tone_on), Some(&p.tone_mode), Some(0), |ui, s, th| {
         let names = ["LF", "LMF", "HMF", "HF"];
         for b in 0..4 {
             let bp = &p.sets[s].bands[b];
@@ -638,8 +652,8 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
                         toggle(ui, setter, &bp.on, "ON", th, green);
                         toggle(ui, setter, &bp.solo, "SOLO", th, amber);
                     });
-                    knob(ui, setter, &bp.gain, "GAIN", 52.0, K_TONE, th);
-                    knob(ui, setter, &bp.freq, "FREQ", 44.0, K_TONE, th);
+                    knob(ui, setter, &bp.gain, "GAIN", 46.0, K_TONE, th);
+                    knob(ui, setter, &bp.freq, "FREQ", 40.0, K_TONE, th);
                 });
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new("FORMA").size(10.5).color(th.dim));
@@ -650,11 +664,11 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // LIMITER
-    rack_unit(ui, setter, state, 2, 132.0, "LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
+    rack_unit(ui, setter, state, 2, 114.0, "LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.lim_in, "INPUT", 56.0, K_LIMITER, th);
-        knob(ui, setter, &q.lim_thr, "SOGLIA", 56.0, K_LIMITER, th);
-        knob(ui, setter, &q.lim_rel, "RILASCIO", 56.0, K_LIMITER, th);
+        knob(ui, setter, &q.lim_in, "INPUT", 48.0, K_LIMITER, th);
+        knob(ui, setter, &q.lim_thr, "SOGLIA", 48.0, K_LIMITER, th);
+        knob(ui, setter, &q.lim_rel, "RILASCIO", 48.0, K_LIMITER, th);
         ui.vertical(|ui| {
             toggle(ui, setter, &q.lim_auto, "AUTO", th, green);
             ui.label(egui::RichText::new("SIDECHAIN").size(10.5).color(th.dim));
@@ -671,32 +685,32 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // FILTER
-    rack_unit(ui, setter, state, 3, 132.0, "FILTER", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
+    rack_unit(ui, setter, state, 3, 114.0, "FILTER", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.pres_db, "PRESENZA", 56.0, K_FILTER, th);
-        knob(ui, setter, &q.pres_f, "FREQ", 56.0, K_FILTER, th);
+        knob(ui, setter, &q.pres_db, "PRESENZA", 48.0, K_FILTER, th);
+        knob(ui, setter, &q.pres_f, "FREQ", 48.0, K_FILTER, th);
     });
 
     // EQ FINALE
-    rack_unit(ui, setter, state, 4, 150.0, "EQ FINALE", Some(&p.eqf_on), Some(&p.eqf_mode), Some(3), |ui, s, th| {
+    rack_unit(ui, setter, state, 4, 140.0, "EQ FINALE", Some(&p.eqf_on), Some(&p.eqf_mode), Some(3), |ui, s, th| {
         let q = &p.sets[s];
         ui.vertical(|ui| {
-            knob(ui, setter, &q.hp_f, "PASSA-ALTI", 56.0, K_EQF, th);
+            knob(ui, setter, &q.hp_f, "PASSA-ALTI", 48.0, K_EQF, th);
             dropdown(ui, setter, &q.hp_s, &format!("hps{}", s), 100.0);
         });
         ui.add_space(14.0);
         ui.vertical(|ui| {
-            knob(ui, setter, &q.lp_f, "PASSA-BASSI", 56.0, K_EQF, th);
+            knob(ui, setter, &q.lp_f, "PASSA-BASSI", 48.0, K_EQF, th);
             dropdown(ui, setter, &q.lp_s, &format!("lps{}", s), 100.0);
         });
     });
 
     // CLIPPER
-    rack_unit(ui, setter, state, 5, 132.0, "CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
+    rack_unit(ui, setter, state, 5, 114.0, "CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.clip_drive, "DRIVE", 56.0, K_CLIP, th);
-        knob(ui, setter, &q.clip_ceil, "CEILING", 56.0, K_CLIP, th);
-        knob(ui, setter, &q.clip_mix, "MIX", 56.0, K_CLIP, th);
+        knob(ui, setter, &q.clip_drive, "DRIVE", 48.0, K_CLIP, th);
+        knob(ui, setter, &q.clip_ceil, "CEILING", 48.0, K_CLIP, th);
+        knob(ui, setter, &q.clip_mix, "MIX", 48.0, K_CLIP, th);
         ui.vertical(|ui| {
             ui.label(egui::RichText::new("MODELLO").size(10.5).color(th.dim));
             dropdown(ui, setter, &q.clip_model, &format!("clipm{}", s), 130.0);
@@ -705,19 +719,9 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // OUTPUT
-    rack_unit(ui, setter, state, 6, 132.0, "OUTPUT", None, None, None, |ui, _s, th| {
-        knob(ui, setter, &p.out_l, "L", 56.0, K_OUT, th);
-        knob(ui, setter, &p.out_r, "R", 56.0, K_OUT, th);
+    rack_unit(ui, setter, state, 6, 114.0, "OUTPUT", None, None, None, |ui, _s, th| {
+        knob(ui, setter, &p.out_l, "L", 48.0, K_OUT, th);
+        knob(ui, setter, &p.out_r, "R", 48.0, K_OUT, th);
         toggle(ui, setter, &p.out_link, "LINK L/R", th, green);
-    });
-
-    // ANALYSIS
-    rack_unit(ui, setter, state, 7, 262.0, "ANALYSIS", None, None, None, |ui, _s, th| {
-        ui.vertical(|ui| {
-            analysis_panel(ui, shared, th);
-        });
-        ui.vertical(|ui| {
-            goniometer(ui, shared, 220.0);
-        });
     });
 }
