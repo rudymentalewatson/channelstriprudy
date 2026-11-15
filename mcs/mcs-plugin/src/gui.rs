@@ -707,7 +707,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     ui.spacing_mut().item_spacing.y = 5.0;
 
     // INPUT
-    rack_unit(ui, setter, state, 0, 104, "INPUT", "PREAMP / TRIM", None, None, None, |ui, _s, th| {
+    rack_unit(ui, setter, state, 0, 104.0, "INPUT", "PREAMP / TRIM", None, None, None, |ui, _s, th| {
         knob(ui, setter, &p.in_trim, "TRIM", 44.0, K_INPUT, th);
         knob(ui, setter, &p.in_tape, "NASTRO", 44.0, K_INPUT, th);
         ui.vertical(|ui| {
@@ -721,7 +721,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // TONE: quattro bande in colonne strette
-    rack_unit(ui, setter, state, 1, 168, "TONE", "EQUALIZER", Some(&p.tone_on), Some(&p.tone_mode), Some(0), |ui, s, th| {
+    rack_unit(ui, setter, state, 1, 168.0, "TONE", "EQUALIZER", Some(&p.tone_on), Some(&p.tone_mode), Some(0), |ui, s, th| {
         let names = ["LF", "LMF", "HMF", "HF"];
         for b in 0..4 {
             let bp = &p.sets[s].bands[b];
@@ -741,7 +741,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // LIMITER
-    rack_unit(ui, setter, state, 2, 120, "LIMITER", "PEAK LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
+    rack_unit(ui, setter, state, 2, 120.0, "LIMITER", "PEAK LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
         let q = &p.sets[s];
         knob(ui, setter, &q.lim_in, "INPUT", 44.0, K_LIMITER, th);
         knob(ui, setter, &q.lim_thr, "SOGLIA", 44.0, K_LIMITER, th);
@@ -760,14 +760,14 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // FILTER
-    rack_unit(ui, setter, state, 3, 104, "FILTER", "PRESENCE", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
+    rack_unit(ui, setter, state, 3, 104.0, "FILTER", "PRESENCE", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
         let q = &p.sets[s];
         knob(ui, setter, &q.pres_db, "PRESENZA", 44.0, K_FILTER, th);
         knob(ui, setter, &q.pres_f, "FREQ", 44.0, K_FILTER, th);
     });
 
     // EQ FINALE
-    rack_unit(ui, setter, state, 4, 126, "EQ FINALE", "HIGH / LOW CUT", Some(&p.eqf_on), Some(&p.eqf_mode), Some(3), |ui, s, th| {
+    rack_unit(ui, setter, state, 4, 126.0, "EQ FINALE", "HIGH / LOW CUT", Some(&p.eqf_on), Some(&p.eqf_mode), Some(3), |ui, s, th| {
         let q = &p.sets[s];
         ui.vertical(|ui| {
             knob(ui, setter, &q.hp_f, "PASSA-ALTI", 44.0, K_EQF, th);
@@ -781,7 +781,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // CLIPPER
-    rack_unit(ui, setter, state, 5, 104, "CLIPPER", "SOFT CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
+    rack_unit(ui, setter, state, 5, 104.0, "CLIPPER", "SOFT CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
         let q = &p.sets[s];
         knob(ui, setter, &q.clip_drive, "DRIVE", 44.0, K_CLIP, th);
         knob(ui, setter, &q.clip_ceil, "CEILING", 44.0, K_CLIP, th);
@@ -794,7 +794,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // OUTPUT
-    rack_unit(ui, setter, state, 6, 120, "OUTPUT", "OUTPUT STAGE", None, None, None, |ui, _s, th| {
+    rack_unit(ui, setter, state, 6, 120.0, "OUTPUT", "OUTPUT STAGE", None, None, None, |ui, _s, th| {
         knob(ui, setter, &p.out_l, "L", 44.0, K_OUT, th);
         knob(ui, setter, &p.out_r, "R", 44.0, K_OUT, th);
         toggle(ui, setter, &p.out_link, "LINK L/R", th, green);
