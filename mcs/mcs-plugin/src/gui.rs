@@ -28,7 +28,7 @@ pub struct GuiState {
 
 impl Default for GuiState {
     fn default() -> Self {
-        GuiState { look: Look::Mix, set_sel: [0; 5], zoom: 0.8 }
+        GuiState { look: Look::Mix, set_sel: [0; 5], zoom: 1.0 }
     }
 }
 
@@ -157,15 +157,23 @@ fn knob(ui: &mut Ui, setter: &ParamSetter, p: &FloatParam, label: &str, size: f3
             painter.line_segment([c + d * (r + 3.0), c + d * (r + if i % 5 == 0 { 8.0 } else { 6.0 })], Stroke::new(1.2, th.dim));
         }
     }
-    // ombra, gonna, cappuccio con bordo e riflesso
-    painter.circle_filled(c + Vec2::new(2.0, 3.0), r, Color32::from_black_alpha(70));
+    // ombra, gonna zigrinata, cappuccio con bordo e riflesso
+    painter.circle_filled(c + Vec2::new(2.0, 3.0), r, Color32::from_black_alpha(80));
     painter.circle_filled(c, r, st.skirt);
     painter.circle_stroke(c, r, Stroke::new(1.0, Color32::from_black_alpha(160)));
+    for i in 0..30 {
+        let a = i as f32 * std::f32::consts::TAU / 30.0;
+        let d = Vec2::new(a.cos(), a.sin());
+        painter.line_segment([c + d * (r * 0.90), c + d * (r * 0.99)], Stroke::new(1.0, Color32::from_white_alpha(26)));
+    }
     let cr = r * 0.80;
     painter.circle_filled(c, cr, mix(st.cap, Color32::BLACK, 0.35));
     painter.circle_filled(c, cr * 0.97, st.cap);
     painter.circle_filled(c + Vec2::new(-cr * 0.18, -cr * 0.22), cr * 0.62, mix(st.cap, Color32::WHITE, 0.14));
     painter.circle_stroke(c, cr, Stroke::new(1.0, mix(st.cap, Color32::BLACK, 0.5)));
+    for k in 1..4 {
+        painter.circle_stroke(c, cr * (0.28 + 0.2 * k as f32), Stroke::new(0.7, Color32::from_white_alpha(16)));
+    }
     let a = start + sweep * norm;
     let d = Vec2::new(a.cos(), a.sin());
     painter.line_segment([c + d * (cr * 0.18), c + d * (cr * 0.92)], Stroke::new((size * 0.06).max(2.5), st.pointer));
@@ -226,13 +234,63 @@ fn seg_button(ui: &mut Ui, label: &str, selected: bool, w: f32, th: Theme) -> bo
 /// Una vite a taglio.
 fn screw(p: &egui::Painter, c: Pos2) {
     p.circle_filled(c + Vec2::new(0.8, 1.2), 6.0, Color32::from_black_alpha(90));
-    p.circle_filled(c, 6.0, Color32::from_rgb(120, 122, 124));
-    p.circle_filled(c + Vec2::new(-1.0, -1.2), 4.6, Color32::from_rgb(168, 170, 172));
+    p.circle_filled(c, 6.0, Color32::from_rgb(112, 114, 116));
+    p.circle_filled(c + Vec2::new(-1.0, -1.2), 4.6, Color32::from_rgb(176, 178, 180));
     p.circle_stroke(c, 6.0, Stroke::new(1.0, Color32::from_black_alpha(150)));
     p.line_segment([c + Vec2::new(-3.8, 2.0), c + Vec2::new(3.8, -2.0)], Stroke::new(1.6, Color32::from_rgb(40, 40, 42)));
 }
 
-/// Un'unità del rack: pannello largo con le orecchie laterali, intestazione a sinistra e comandi a destra.
+/// Rettangolo con sfumatura verticale.
+fn gradient_rect(p: &egui::Painter, r: Rect, top: Color32, bottom: Color32) {
+    let mut m = egui::epaint::Mesh::default();
+    m.colored_vertex(r.left_top(), top);
+    m.colored_vertex(r.right_top(), top);
+    m.colored_vertex(r.right_bottom(), bottom);
+    m.colored_vertex(r.left_bottom(), bottom);
+    m.add_triangle(0, 1, 2);
+    m.add_triangle(0, 2, 3);
+    p.add(egui::Shape::mesh(m));
+}
+
+/// Indicatore a lancetta con quadrante ambra. `value` tra `min` e `max`; la parte da `red_from` in poi è rossa.
+fn vu_meter(ui: &mut Ui, w: f32, h: f32, caption: &str, value: f32, min: f32, max: f32, ticks: &[(f32, &str)], red_from: f32) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect(rect, CornerRadius::same(5), Color32::from_rgb(16, 16, 16), Stroke::new(2.0, Color32::from_rgb(78, 72, 64)), StrokeKind::Inside);
+    let face = rect.shrink(6.0);
+    gradient_rect(&p, face, Color32::from_rgb(250, 228, 160), Color32::from_rgb(214, 168, 88));
+    let fp = ui.painter_at(face);
+    let ink = Color32::from_rgb(44, 30, 18);
+    let pivot = Pos2::new(face.center().x, face.bottom() + face.height() * 0.30);
+    let rad = face.height() * 1.15;
+    let a0 = -50.0f32.to_radians();
+    let a1 = 50.0f32.to_radians();
+    let at = |t: f32, r: f32| {
+        let a = a0 + (a1 - a0) * t.clamp(0.0, 1.0);
+        pivot + Vec2::new(a.sin(), -a.cos()) * r
+    };
+    let tn = |v: f32| (v - min) / (max - min);
+    let red_t = tn(red_from);
+    for (t0, t1, col) in [(0.0f32, red_t, ink), (red_t, 1.0f32, Color32::from_rgb(190, 40, 30))] {
+        let mut pts = Vec::new();
+        for k in 0..=36 {
+            pts.push(at(t0 + (t1 - t0) * k as f32 / 36.0, rad * 0.90));
+        }
+        fp.add(egui::Shape::line(pts, Stroke::new(2.2, col)));
+    }
+    for (v, lab) in ticks {
+        let t = tn(*v);
+        fp.line_segment([at(t, rad * 0.83), at(t, rad * 0.90)], Stroke::new(1.4, ink));
+        fp.text(at(t, rad * 0.76), Align2::CENTER_CENTER, *lab, FontId::proportional(9.0), ink);
+    }
+    let t = tn(value);
+    fp.line_segment([at(t, rad * 0.28) + Vec2::new(1.5, 1.5), at(t, rad * 0.93) + Vec2::new(1.5, 1.5)], Stroke::new(1.6, Color32::from_black_alpha(60)));
+    fp.line_segment([at(t, rad * 0.28), at(t, rad * 0.93)], Stroke::new(1.8, Color32::from_rgb(20, 14, 10)));
+    fp.text(Pos2::new(face.center().x, face.bottom() - 9.0), Align2::CENTER_CENTER, caption, FontId::proportional(9.5), ink);
+    fp.rect_filled(Rect::from_min_size(face.min, Vec2::new(face.width(), face.height() * 0.38)), 0.0, Color32::from_white_alpha(14));
+}
+
+/// Una unità del rack: pannello metallico con orecchie e viti, intestazione a sinistra e comandi a destra.
 /// `content` riceve l'indice del set (A o B) in modifica.
 fn rack_unit(
     ui: &mut Ui,
@@ -241,6 +299,7 @@ fn rack_unit(
     idx: usize,
     height: f32,
     title: &str,
+    subtitle: &str,
     on: Option<&BoolParam>,
     mode: Option<&EnumParam<ModeP>>,
     sel_slot: Option<usize>,
@@ -254,35 +313,56 @@ fn rack_unit(
         }
         set = state.set_sel[slot];
     }
-    let w = ui.available_width().clamp(700.0, 2400.0);
+    let w = ui.available_width().clamp(700.0, 960.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, height), Sense::hover());
     let painter = ui.painter_at(rect);
     let ear = 28.0;
-    painter.rect_filled(rect, 3.0, Color32::from_rgb(20, 20, 22));
+    // orecchie: metallo scuro con sfumatura
+    gradient_rect(&painter, rect, Color32::from_rgb(52, 52, 54), Color32::from_rgb(20, 20, 22));
     let plate = Rect::from_min_max(rect.min + Vec2::new(ear, 1.0), rect.max - Vec2::new(ear, 1.0));
-    painter.rect(plate, 2.0, th.panel, Stroke::new(1.5, th.edge), StrokeKind::Inside);
-    painter.line_segment([plate.left_top() + Vec2::new(2.0, 2.0), plate.right_top() + Vec2::new(-2.0, 2.0)], Stroke::new(1.0, mix(th.panel, Color32::WHITE, 0.28)));
+    // pannello: sfumatura, righe di spazzolatura, bordo e luci
+    gradient_rect(&painter, plate, mix(th.panel, Color32::WHITE, 0.12), mix(th.panel, Color32::BLACK, 0.22));
+    let mut y = plate.top() + 3.0;
+    let mut k = 0;
+    while y < plate.bottom() - 2.0 {
+        let c = if k % 2 == 0 { Color32::from_white_alpha(8) } else { Color32::from_black_alpha(6) };
+        painter.line_segment([Pos2::new(plate.left() + 2.0, y), Pos2::new(plate.right() - 2.0, y)], Stroke::new(1.0, c));
+        y += 2.0;
+        k += 1;
+    }
+    painter.rect_stroke(plate, 2.0, Stroke::new(1.5, th.edge), StrokeKind::Inside);
+    painter.line_segment([plate.left_top() + Vec2::new(2.0, 2.0), plate.right_top() + Vec2::new(-2.0, 2.0)], Stroke::new(1.0, mix(th.panel, Color32::WHITE, 0.45)));
+    painter.line_segment([plate.left_bottom() + Vec2::new(2.0, -2.0), plate.right_bottom() + Vec2::new(-2.0, -2.0)], Stroke::new(1.0, Color32::from_black_alpha(70)));
     for x in [rect.left() + ear * 0.5, rect.right() - ear * 0.5] {
-        for y in [rect.top() + 16.0, rect.bottom() - 16.0] {
-            screw(&painter, Pos2::new(x, y));
+        for yy in [rect.top() + 16.0, rect.bottom() - 16.0] {
+            screw(&painter, Pos2::new(x, yy));
         }
     }
-    let head = Rect::from_min_size(plate.min + Vec2::new(14.0, 8.0), Vec2::new(150.0, plate.height() - 16.0));
-    let sep_x = head.right() + 10.0;
-    painter.line_segment([Pos2::new(sep_x, plate.top() + 10.0), Pos2::new(sep_x, plate.bottom() - 10.0)], Stroke::new(1.0, mix(th.panel, Color32::BLACK, 0.35)));
-    painter.line_segment([Pos2::new(sep_x + 1.0, plate.top() + 10.0), Pos2::new(sep_x + 1.0, plate.bottom() - 10.0)], Stroke::new(1.0, mix(th.panel, Color32::WHITE, 0.25)));
+    // marchio inciso, molto tenue, in basso a destra
+    painter.text(plate.right_bottom() + Vec2::new(-18.0, -8.0), Align2::RIGHT_BOTTOM, "M C S", FontId::proportional(26.0), th.text.gamma_multiply(0.14));
 
-    ui.scope_builder(UiBuilder::new().max_rect(head), |ui| {
-        ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(title).strong().size(17.0).color(th.text));
-            if let Some(on) = on {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    toggle(ui, setter, on, "ON", th, Color32::from_rgb(90, 220, 90));
-                });
-            }
+    // intestazione: titolo inciso e sottotitolo
+    let head = Rect::from_min_size(plate.min + Vec2::new(14.0, 7.0), Vec2::new(148.0, plate.height() - 14.0));
+    let sep_x = head.right() + 10.0;
+    let engrave = if th.metal { Color32::from_white_alpha(170) } else { Color32::from_black_alpha(190) };
+    let tp = head.left_top();
+    for (d, c) in [(Vec2::new(0.0, 1.3), engrave), (Vec2::ZERO, th.text), (Vec2::new(0.7, 0.0), th.text)] {
+        painter.text(tp + d, Align2::LEFT_TOP, title, FontId::proportional(18.0), c);
+    }
+    painter.text(tp + Vec2::new(1.0, 23.0), Align2::LEFT_TOP, subtitle, FontId::proportional(9.5), th.dim);
+    painter.line_segment([Pos2::new(sep_x, plate.top() + 10.0), Pos2::new(sep_x, plate.bottom() - 10.0)], Stroke::new(1.0, mix(th.panel, Color32::BLACK, 0.4)));
+    painter.line_segment([Pos2::new(sep_x + 1.0, plate.top() + 10.0), Pos2::new(sep_x + 1.0, plate.bottom() - 10.0)], Stroke::new(1.0, mix(th.panel, Color32::WHITE, 0.3)));
+
+    if let Some(on) = on {
+        let r = Rect::from_min_size(Pos2::new(head.right() - 50.0, head.top()), Vec2::new(50.0, 24.0));
+        ui.scope_builder(UiBuilder::new().max_rect(r), |ui| {
+            toggle(ui, setter, on, "ON", th, Color32::from_rgb(90, 220, 90));
         });
-        if let (Some(m), Some(slot)) = (mode, sel_slot) {
+    }
+    if let (Some(m), Some(slot)) = (mode, sel_slot) {
+        let r = Rect::from_min_max(head.min + Vec2::new(0.0, 38.0), head.max);
+        ui.scope_builder(UiBuilder::new().max_rect(r), |ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(4.0, 3.0);
             let cur = m.value();
             ui.horizontal(|ui| {
                 let bw = (ui.available_width() - 2.0 * ui.spacing().item_spacing.x) / 3.0;
@@ -307,8 +387,8 @@ fn rack_unit(
                     }
                 });
             }
-        }
-    });
+        });
+    }
 
     let body = Rect::from_min_max(Pos2::new(sep_x + 14.0, plate.top() + 6.0), Pos2::new(plate.right() - 12.0, plate.bottom() - 6.0));
     ui.scope_builder(UiBuilder::new().max_rect(body).layout(egui::Layout::left_to_right(egui::Align::Min)), |ui| {
@@ -580,20 +660,24 @@ fn eq_curve(ui: &mut Ui, setter: &ParamSetter, state: &GuiState, p: &McsParams, 
 
 // ---------------------------------------------------------------- finestra
 
+/// Dimensione di progetto dell'interfaccia: la finestra si adatta da sola, così si vede sempre tutto.
+
 pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, params: &McsParams, shared: &Shared, egui_state: &EguiState) {
     ctx.request_repaint_after(Duration::from_millis(33));
-    ctx.set_zoom_factor(state.zoom);
-    ResizableWindow::new("mcs-window").min_size(Vec2::new(780.0, 400.0)).show(ctx, egui_state, |ui| {
+    ResizableWindow::new("mcs-window").min_size(Vec2::new(520.0, 560.0)).show(ctx, egui_state, |ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("MULTI CHANNEL STRIP").strong().size(20.0).color(Color32::from_rgb(230, 220, 190)));
+            ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
+            ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
+            ui.label(egui::RichText::new("v4 RACK").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
-            ui.label("Zoom");
-            if ui.button("−").clicked() {
-                state.zoom = (state.zoom - 0.1).max(0.6);
+            if ui.button("  −  ").clicked() {
+                state.zoom = (state.zoom - 0.1).max(0.5);
+                ctx.set_zoom_factor(state.zoom);
             }
             ui.label(format!("{:.0}%", state.zoom * 100.0));
-            if ui.button("+").clicked() {
-                state.zoom = (state.zoom + 0.1).min(1.4);
+            if ui.button("  +  ").clicked() {
+                state.zoom = (state.zoom + 0.1).min(2.0);
+                ctx.set_zoom_factor(state.zoom);
             }
             ui.add_space(12.0);
             ui.label("Oversampling");
@@ -602,20 +686,16 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
                 shared.reset_lufs.store(true, Relaxed);
             }
         });
-        ui.horizontal_top(|ui| {
-            let total = ui.available_width();
-            let curve_w = (total - 540.0).max(320.0);
-            eq_curve(ui, setter, state, params, shared.sr.load(Relaxed), curve_w, 178.0);
-            ui.vertical(|ui| {
-                analysis_panel(ui, shared, PLATES[7]);
-            });
-            ui.vertical(|ui| {
-                goniometer(ui, shared, 172.0);
-            });
-        });
+        let curve_w = ui.available_width().clamp(360.0, 940.0);
+        eq_curve(ui, setter, state, params, shared.sr.load(Relaxed), curve_w, 170.0);
         ui.add_space(4.0);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             rack(ui, setter, state, params, shared);
+            ui.add_space(6.0);
+            ui.horizontal_top(|ui| {
+                analysis_panel(ui, shared, PLATES[7]);
+                goniometer(ui, shared, 172.0);
+            });
         });
     });
 }
@@ -627,9 +707,9 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     ui.spacing_mut().item_spacing.y = 5.0;
 
     // INPUT
-    rack_unit(ui, setter, state, 0, 114.0, "INPUT", None, None, None, |ui, _s, th| {
-        knob(ui, setter, &p.in_trim, "TRIM", 48.0, K_INPUT, th);
-        knob(ui, setter, &p.in_tape, "NASTRO", 48.0, K_INPUT, th);
+    rack_unit(ui, setter, state, 0, 104, "INPUT", "PREAMP / TRIM", None, None, None, |ui, _s, th| {
+        knob(ui, setter, &p.in_trim, "TRIM", 44.0, K_INPUT, th);
+        knob(ui, setter, &p.in_tape, "NASTRO", 44.0, K_INPUT, th);
         ui.vertical(|ui| {
             toggle(ui, setter, &p.in_pol_l, "POL L", th, amber);
             toggle(ui, setter, &p.in_pol_r, "POL R", th, amber);
@@ -640,88 +720,86 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
         });
     });
 
-    // TONE: quattro bande affiancate
-    rack_unit(ui, setter, state, 1, 156.0, "TONE", Some(&p.tone_on), Some(&p.tone_mode), Some(0), |ui, s, th| {
+    // TONE: quattro bande in colonne strette
+    rack_unit(ui, setter, state, 1, 168, "TONE", "EQUALIZER", Some(&p.tone_on), Some(&p.tone_mode), Some(0), |ui, s, th| {
         let names = ["LF", "LMF", "HMF", "HF"];
         for b in 0..4 {
             let bp = &p.sets[s].bands[b];
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(names[b]).strong().size(15.0).color(th.text));
-                        toggle(ui, setter, &bp.on, "ON", th, green);
-                        toggle(ui, setter, &bp.solo, "SOLO", th, amber);
-                    });
-                    knob(ui, setter, &bp.gain, "GAIN", 46.0, K_TONE, th);
-                    knob(ui, setter, &bp.freq, "FREQ", 40.0, K_TONE, th);
+                    ui.label(egui::RichText::new(names[b]).strong().size(14.0).color(BAND_COL[b]));
+                    toggle(ui, setter, &bp.on, "ON", th, green);
+                    toggle(ui, setter, &bp.solo, "SOLO", th, amber);
                 });
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("FORMA").size(10.5).color(th.dim));
-                    dropdown(ui, setter, &bp.shape, &format!("shape{}_{}", b, s), 150.0);
+                    knob(ui, setter, &bp.gain, "GAIN", 40.0, K_TONE, th);
+                    knob(ui, setter, &bp.freq, "FREQ", 34.0, K_TONE, th);
                 });
+                dropdown(ui, setter, &bp.shape, &format!("shape{}_{}", b, s), 112.0);
             });
         }
     });
 
     // LIMITER
-    rack_unit(ui, setter, state, 2, 114.0, "LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
+    rack_unit(ui, setter, state, 2, 120, "LIMITER", "PEAK LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.lim_in, "INPUT", 48.0, K_LIMITER, th);
-        knob(ui, setter, &q.lim_thr, "SOGLIA", 48.0, K_LIMITER, th);
-        knob(ui, setter, &q.lim_rel, "RILASCIO", 48.0, K_LIMITER, th);
+        knob(ui, setter, &q.lim_in, "INPUT", 44.0, K_LIMITER, th);
+        knob(ui, setter, &q.lim_thr, "SOGLIA", 44.0, K_LIMITER, th);
+        knob(ui, setter, &q.lim_rel, "RILASCIO", 44.0, K_LIMITER, th);
         ui.vertical(|ui| {
             toggle(ui, setter, &q.lim_auto, "AUTO", th, green);
-            ui.label(egui::RichText::new("SIDECHAIN").size(10.5).color(th.dim));
-            ui.horizontal(|ui| {
-                toggle(ui, setter, &q.sc_hp, "HP", th, amber);
-                toggle(ui, setter, &q.sc_lp, "LP", th, amber);
-            });
+            toggle(ui, setter, &q.sc_bell, "PRESENZA", th, amber);
         });
         ui.vertical(|ui| {
-            toggle(ui, setter, &q.sc_bell, "PRESENZA", th, amber);
-            ui.add_space(8.0);
-            ui.label(egui::RichText::new(format!("GR {:.1} dB", shared.gr.load(Relaxed))).monospace().size(13.0).color(th.text));
+            ui.label(egui::RichText::new("SIDECHAIN").size(10.0).color(th.dim));
+            toggle(ui, setter, &q.sc_hp, "HP", th, amber);
+            toggle(ui, setter, &q.sc_lp, "LP", th, amber);
         });
+        let gr = -shared.gr.load(Relaxed);
+        vu_meter(ui, 150.0, 100.0, "GAIN REDUCTION", gr, 0.0, 12.0, &[(0.0, "0"), (3.0, "3"), (6.0, "6"), (9.0, "9"), (12.0, "12")], 9.0);
     });
 
     // FILTER
-    rack_unit(ui, setter, state, 3, 114.0, "FILTER", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
+    rack_unit(ui, setter, state, 3, 104, "FILTER", "PRESENCE", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.pres_db, "PRESENZA", 48.0, K_FILTER, th);
-        knob(ui, setter, &q.pres_f, "FREQ", 48.0, K_FILTER, th);
+        knob(ui, setter, &q.pres_db, "PRESENZA", 44.0, K_FILTER, th);
+        knob(ui, setter, &q.pres_f, "FREQ", 44.0, K_FILTER, th);
     });
 
     // EQ FINALE
-    rack_unit(ui, setter, state, 4, 140.0, "EQ FINALE", Some(&p.eqf_on), Some(&p.eqf_mode), Some(3), |ui, s, th| {
+    rack_unit(ui, setter, state, 4, 126, "EQ FINALE", "HIGH / LOW CUT", Some(&p.eqf_on), Some(&p.eqf_mode), Some(3), |ui, s, th| {
         let q = &p.sets[s];
         ui.vertical(|ui| {
-            knob(ui, setter, &q.hp_f, "PASSA-ALTI", 48.0, K_EQF, th);
+            knob(ui, setter, &q.hp_f, "PASSA-ALTI", 44.0, K_EQF, th);
             dropdown(ui, setter, &q.hp_s, &format!("hps{}", s), 100.0);
         });
         ui.add_space(14.0);
         ui.vertical(|ui| {
-            knob(ui, setter, &q.lp_f, "PASSA-BASSI", 48.0, K_EQF, th);
+            knob(ui, setter, &q.lp_f, "PASSA-BASSI", 44.0, K_EQF, th);
             dropdown(ui, setter, &q.lp_s, &format!("lps{}", s), 100.0);
         });
     });
 
     // CLIPPER
-    rack_unit(ui, setter, state, 5, 114.0, "CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
+    rack_unit(ui, setter, state, 5, 104, "CLIPPER", "SOFT CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.clip_drive, "DRIVE", 48.0, K_CLIP, th);
-        knob(ui, setter, &q.clip_ceil, "CEILING", 48.0, K_CLIP, th);
-        knob(ui, setter, &q.clip_mix, "MIX", 48.0, K_CLIP, th);
+        knob(ui, setter, &q.clip_drive, "DRIVE", 44.0, K_CLIP, th);
+        knob(ui, setter, &q.clip_ceil, "CEILING", 44.0, K_CLIP, th);
+        knob(ui, setter, &q.clip_mix, "MIX", 44.0, K_CLIP, th);
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("MODELLO").size(10.5).color(th.dim));
-            dropdown(ui, setter, &q.clip_model, &format!("clipm{}", s), 130.0);
+            ui.label(egui::RichText::new("MODELLO").size(10.0).color(th.dim));
+            dropdown(ui, setter, &q.clip_model, &format!("clipm{}", s), 120.0);
             toggle(ui, setter, &q.clip_post, "POST CLIP", th, amber);
         });
     });
 
     // OUTPUT
-    rack_unit(ui, setter, state, 6, 114.0, "OUTPUT", None, None, None, |ui, _s, th| {
-        knob(ui, setter, &p.out_l, "L", 48.0, K_OUT, th);
-        knob(ui, setter, &p.out_r, "R", 48.0, K_OUT, th);
+    rack_unit(ui, setter, state, 6, 120, "OUTPUT", "OUTPUT STAGE", None, None, None, |ui, _s, th| {
+        knob(ui, setter, &p.out_l, "L", 44.0, K_OUT, th);
+        knob(ui, setter, &p.out_r, "R", 44.0, K_OUT, th);
         toggle(ui, setter, &p.out_link, "LINK L/R", th, green);
+        ui.add_space(30.0);
+        let lufs = shared.momentary.load(Relaxed);
+        vu_meter(ui, 190.0, 100.0, "LUFS", lufs, -40.0, 0.0, &[(-40.0, "-40"), (-30.0, "-30"), (-20.0, "-20"), (-14.0, "-14"), (-8.0, "-8"), (0.0, "0")], -9.0);
     });
 }
