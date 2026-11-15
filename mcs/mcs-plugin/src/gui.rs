@@ -664,20 +664,31 @@ fn eq_curve(ui: &mut Ui, setter: &ParamSetter, state: &GuiState, p: &McsParams, 
 
 pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, params: &McsParams, shared: &Shared, egui_state: &EguiState) {
     ctx.request_repaint_after(Duration::from_millis(33));
+    // adattamento automatico: lo zoom segue la dimensione della finestra (x ritocco manuale)
+    {
+        const DESIGN_W: f32 = 900.0;
+        const DESIGN_H: f32 = 1130.0;
+        let ppp = ctx.pixels_per_point();
+        let native = ctx.native_pixels_per_point().unwrap_or(1.0).max(0.1);
+        let screen = ctx.input(|i| i.screen_rect().size());
+        let fit = ((screen.x * ppp / native) / DESIGN_W).min((screen.y * ppp / native) / DESIGN_H);
+        let z = (fit * state.zoom).clamp(0.35, 2.5);
+        if (z - ctx.zoom_factor()).abs() > 0.004 {
+            ctx.set_zoom_factor(z);
+        }
+    }
     ResizableWindow::new("mcs-window").min_size(Vec2::new(520.0, 560.0)).show(ctx, egui_state, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
-            ui.label(egui::RichText::new("v4 RACK").size(11.0).color(Color32::from_rgb(120, 200, 120)));
+            ui.label(egui::RichText::new("v5 FIT").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
             if ui.button("  −  ").clicked() {
                 state.zoom = (state.zoom - 0.1).max(0.5);
-                ctx.set_zoom_factor(state.zoom);
             }
             ui.label(format!("{:.0}%", state.zoom * 100.0));
             if ui.button("  +  ").clicked() {
-                state.zoom = (state.zoom + 0.1).min(2.0);
-                ctx.set_zoom_factor(state.zoom);
+                state.zoom = (state.zoom + 0.1).min(1.6);
             }
             ui.add_space(12.0);
             ui.label("Oversampling");
@@ -686,16 +697,20 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
                 shared.reset_lufs.store(true, Relaxed);
             }
         });
-        let curve_w = ui.available_width().clamp(360.0, 940.0);
-        eq_curve(ui, setter, state, params, shared.sr.load(Relaxed), curve_w, 170.0);
+        ui.horizontal_top(|ui| {
+            let total = ui.available_width().min(960.0);
+            let curve_w = (total - 530.0).max(300.0);
+            eq_curve(ui, setter, state, params, shared.sr.load(Relaxed), curve_w, 172.0);
+            ui.vertical(|ui| {
+                analysis_panel(ui, shared, PLATES[7]);
+            });
+            ui.vertical(|ui| {
+                goniometer(ui, shared, 172.0);
+            });
+        });
         ui.add_space(4.0);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             rack(ui, setter, state, params, shared);
-            ui.add_space(6.0);
-            ui.horizontal_top(|ui| {
-                analysis_panel(ui, shared, PLATES[7]);
-                goniometer(ui, shared, 172.0);
-            });
         });
     });
 }
