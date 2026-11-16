@@ -28,7 +28,7 @@ pub struct GuiState {
 
 impl Default for GuiState {
     fn default() -> Self {
-        GuiState { look: Look::Mix, set_sel: [0; 5], zoom: 1.0 }
+        GuiState { look: Look::Mix, set_sel: [0; 5], zoom: 0.8 }
     }
 }
 
@@ -664,31 +664,22 @@ fn eq_curve(ui: &mut Ui, setter: &ParamSetter, state: &GuiState, p: &McsParams, 
 
 pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, params: &McsParams, shared: &Shared, egui_state: &EguiState) {
     ctx.request_repaint_after(Duration::from_millis(33));
-    // adattamento automatico: lo zoom segue la dimensione della finestra (x ritocco manuale)
-    {
-        const DESIGN_W: f32 = 900.0;
-        const DESIGN_H: f32 = 1130.0;
-        let ppp = ctx.pixels_per_point();
-        let native = ctx.native_pixels_per_point().unwrap_or(1.0).max(0.1);
-        let screen = ctx.input(|i| i.screen_rect().size());
-        let fit = ((screen.x * ppp / native) / DESIGN_W).min((screen.y * ppp / native) / DESIGN_H);
-        let z = (fit * state.zoom).clamp(0.35, 2.5);
-        if (z - ctx.zoom_factor()).abs() > 0.004 {
-            ctx.set_zoom_factor(z);
-        }
+    // zoom manuale (pulsanti - e +): niente calcoli automatici, resta nitido
+    if (state.zoom - ctx.zoom_factor()).abs() > 0.004 {
+        ctx.set_zoom_factor(state.zoom);
     }
     ResizableWindow::new("mcs-window").min_size(Vec2::new(520.0, 560.0)).show(ctx, egui_state, |ui| {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
-            ui.label(egui::RichText::new("v5 FIT").size(11.0).color(Color32::from_rgb(120, 200, 120)));
+            ui.label(egui::RichText::new("v6").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
             if ui.button("  −  ").clicked() {
-                state.zoom = (state.zoom - 0.1).max(0.5);
+                state.zoom = (state.zoom - 0.05).max(0.4);
             }
             ui.label(format!("{:.0}%", state.zoom * 100.0));
             if ui.button("  +  ").clicked() {
-                state.zoom = (state.zoom + 0.1).min(1.6);
+                state.zoom = (state.zoom + 0.05).min(1.6);
             }
             ui.add_space(12.0);
             ui.label("Oversampling");
