@@ -3,6 +3,7 @@
 use mcs_dsp::chain::{Chain, ChainParams};
 use mcs_dsp::clipper::{ClipModel, ClipperParams};
 use mcs_dsp::filters::{EqFinaleParams, FilterParams};
+use mcs_dsp::compressor::CompParams;
 use mcs_dsp::limiter::LimiterParams;
 use mcs_dsp::tone::{Shape, ToneBand, ToneParams};
 use mcs_dsp::{Mode, Module};
@@ -25,6 +26,7 @@ pub struct Shared {
     pub rms_r: AtomicF32,
     pub corr: AtomicF32,
     pub gr: AtomicF32,
+    pub comp_gr: AtomicF32,
     pub reset_lufs: AtomicBool,
     /// Contatori di diagnosi.
     pub calls: AtomicU32,
@@ -50,6 +52,7 @@ impl Default for Shared {
             rms_r: AtomicF32::new(-120.0),
             corr: z(),
             gr: z(),
+            comp_gr: z(),
             reset_lufs: AtomicBool::new(false),
             calls: AtomicU32::new(0),
             no_chain: AtomicU32::new(0),
@@ -194,6 +197,35 @@ pub struct SetParams {
     #[nested(array, group = "Tone bande")]
     pub bands: [BandParams; 4],
 
+    #[id = "cmp_thr"]
+    pub cmp_thr: FloatParam,
+    #[id = "cmp_ratio"]
+    pub cmp_ratio: FloatParam,
+    #[id = "cmp_att"]
+    pub cmp_att: FloatParam,
+    #[id = "cmp_rel"]
+    pub cmp_rel: FloatParam,
+    #[id = "cmp_att_auto"]
+    pub cmp_att_auto: BoolParam,
+    #[id = "cmp_rel_auto"]
+    pub cmp_rel_auto: BoolParam,
+    #[id = "cmp_ff"]
+    pub cmp_ff: BoolParam,
+    #[id = "cmp_tilt"]
+    pub cmp_tilt: FloatParam,
+    #[id = "cmp_tilt_f"]
+    pub cmp_tilt_f: FloatParam,
+    #[id = "cmp_sc_db"]
+    pub cmp_sc_db: FloatParam,
+    #[id = "cmp_sc_f"]
+    pub cmp_sc_f: FloatParam,
+    #[id = "cmp_xf"]
+    pub cmp_xf: BoolParam,
+    #[id = "cmp_mk"]
+    pub cmp_mk: FloatParam,
+    #[id = "cmp_mix"]
+    pub cmp_mix: FloatParam,
+
     #[id = "lim_in"]
     pub lim_in: FloatParam,
     #[id = "lim_thr"]
@@ -244,6 +276,27 @@ impl SetParams {
                 band("HMF", 2500.0, 600.0, 8000.0, ShapeP::Bell),
                 band("HF", 10000.0, 3000.0, 20000.0, ShapeP::Shelf),
             ],
+            cmp_thr: db("Comp Soglia", 0.0, -30.0, 0.0),
+            cmp_ratio: FloatParam::new("Comp Rapporto", 2.0, FloatRange::Skewed { min: 1.0, max: 20.0, factor: FloatRange::skew_factor(-1.5) })
+                .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            cmp_att: FloatParam::new("Comp Attacco", 30.0, FloatRange::Skewed { min: 0.1, max: 100.0, factor: FloatRange::skew_factor(-2.0) })
+                .with_unit(" ms")
+                .with_value_to_string(formatters::v2s_f32_rounded(1)),
+            cmp_rel: FloatParam::new("Comp Rilascio", 200.0, FloatRange::Skewed { min: 20.0, max: 1500.0, factor: FloatRange::skew_factor(-1.5) })
+                .with_unit(" ms")
+                .with_value_to_string(formatters::v2s_f32_rounded(0)),
+            cmp_att_auto: BoolParam::new("Comp Attacco Auto", false),
+            cmp_rel_auto: BoolParam::new("Comp Rilascio Auto", false),
+            cmp_ff: BoolParam::new("Comp Avanti", false),
+            cmp_tilt: db("Comp Tono", 0.0, -6.0, 6.0),
+            cmp_tilt_f: hz("Comp Tono Freq", 1000.0, 50.0, 12000.0),
+            cmp_sc_db: db("Comp Sidechain", 0.0, -12.0, 12.0),
+            cmp_sc_f: hz("Comp Sidechain Freq", 150.0, 30.0, 3000.0),
+            cmp_xf: BoolParam::new("Comp Trafo", false),
+            cmp_mk: db("Comp Makeup", 0.0, 0.0, 18.0),
+            cmp_mix: FloatParam::new("Comp Mix", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" %")
+                .with_value_to_string(formatters::v2s_f32_percentage(0)),
             lim_in: db("Limiter In", 0.0, 0.0, 24.0),
             lim_thr: db("Limiter Soglia", 0.0, -24.0, 0.0),
             lim_rel: FloatParam::new("Limiter Rilascio", 100.0, FloatRange::Skewed { min: 5.0, max: 1500.0, factor: FloatRange::skew_factor(-1.5) })
@@ -292,6 +345,10 @@ pub struct McsParams {
     pub tone_on: BoolParam,
     #[id = "tone_mode"]
     pub tone_mode: EnumParam<ModeP>,
+    #[id = "cmp_on"]
+    pub cmp_on: BoolParam,
+    #[id = "cmp_mode"]
+    pub cmp_mode: EnumParam<ModeP>,
     #[id = "lim_on"]
     pub lim_on: BoolParam,
     #[id = "lim_mode"]
@@ -326,7 +383,7 @@ pub struct McsParams {
 impl Default for McsParams {
     fn default() -> Self {
         McsParams {
-            editor_state: EguiState::from_size(840, 680),
+            editor_state: EguiState::from_size(1250, 640),
             in_trim: db("Input Trim", 0.0, -24.0, 24.0),
             in_pol_l: BoolParam::new("Polarità L", false),
             in_pol_r: BoolParam::new("Polarità R", false),
@@ -335,6 +392,8 @@ impl Default for McsParams {
             in_phase: BoolParam::new("Fase", false),
             tone_on: BoolParam::new("Tone On", true),
             tone_mode: EnumParam::new("Tone Modo", ModeP::St),
+            cmp_on: BoolParam::new("Compressore On", true),
+            cmp_mode: EnumParam::new("Compressore Modo", ModeP::St),
             lim_on: BoolParam::new("Limiter On", true),
             lim_mode: EnumParam::new("Limiter Modo", ModeP::St),
             flt_on: BoolParam::new("Filter On", true),
@@ -371,6 +430,7 @@ impl McsParams {
         p.input.phase = self.in_phase.value();
 
         p.tone = Module { on: self.tone_on.value(), mode: self.tone_mode.value().into(), sets: p.tone.sets };
+        p.comp = Module { on: self.cmp_on.value(), mode: self.cmp_mode.value().into(), sets: p.comp.sets };
         p.limiter = Module { on: self.lim_on.value(), mode: self.lim_mode.value().into(), sets: p.limiter.sets };
         p.filter = Module { on: self.flt_on.value(), mode: self.flt_mode.value().into(), sets: p.filter.sets };
         p.eqf = Module { on: self.eqf_on.value(), mode: self.eqf_mode.value().into(), sets: p.eqf.sets };
@@ -390,6 +450,22 @@ impl McsParams {
                 };
             }
             p.tone.sets[i] = ToneParams { bands };
+            p.comp.sets[i] = CompParams {
+                thresh_db: s.cmp_thr.value() as f64,
+                ratio: s.cmp_ratio.value() as f64,
+                attack_ms: s.cmp_att.value() as f64,
+                release_ms: s.cmp_rel.value() as f64,
+                auto_attack: s.cmp_att_auto.value(),
+                auto_release: s.cmp_rel_auto.value(),
+                feed_fwd: s.cmp_ff.value(),
+                makeup_db: s.cmp_mk.value() as f64,
+                mix: s.cmp_mix.value() as f64,
+                tilt_db: s.cmp_tilt.value() as f64,
+                tilt_freq: s.cmp_tilt_f.value() as f64,
+                sc_db: s.cmp_sc_db.value() as f64,
+                sc_freq: s.cmp_sc_f.value() as f64,
+                xfmr: s.cmp_xf.value(),
+            };
             p.limiter.sets[i] = LimiterParams {
                 in_db: s.lim_in.value() as f64,
                 thresh_db: s.lim_thr.value() as f64,
@@ -517,6 +593,7 @@ impl Plugin for MultiChannelStrip {
         sh.rms_l.store(sn.rms_l_db as f32, Relaxed);
         sh.rms_r.store(sn.rms_r_db as f32, Relaxed);
         sh.corr.store(sn.correlation as f32, Relaxed);
+        sh.comp_gr.store(chain.comp.gr_db as f32, Relaxed);
         sh.gr.store(chain.limiter.gr_db().0.min(chain.limiter.gr_db().1) as f32, Relaxed);
         if let Some(mut pts) = sh.scope.try_lock() {
             pts.clear();

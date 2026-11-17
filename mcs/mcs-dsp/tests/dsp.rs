@@ -345,3 +345,119 @@ fn solo_isolates_band() {
     let b = rms_db(&l2[12000..]);
     assert!(b - a > 11.0, "solo non isola: {} vs {}", b, a);
 }
+
+#[test]
+fn compressor_reduces_and_is_transparent_when_off() {
+    use mcs_dsp::compressor::*;
+    let sr = 48000.0;
+    let mut c = Compressor::new(sr);
+    let mut p = mcs_dsp::Module::<CompParams>::default();
+    p.sets[0].thresh_db = -20.0;
+    p.sets[0].ratio = 4.0;
+    p.sets[0].attack_ms = 1.0;
+    p.sets[0].feed_fwd = true;
+    // tono a -6 dBFS: 14 dB sopra la soglia, riduzione teorica 10.5 dB
+    let amp = 0.5f64;
+    let mut peak = 0.0f64;
+    for n in 0..96000 {
+        if n % 32 == 0 {
+            c.update(&p);
+        }
+        let x = amp * (2.0 * std::f64::consts::PI * 1000.0 * n as f64 / sr).sin();
+        let (y, _) = c.process(x, x);
+        if n > 80000 {
+            peak = peak.max(y.abs());
+        }
+    }
+    let red = 20.0 * (amp / peak).log10();
+    assert!((red - 10.5).abs() < 1.0, "riduzione {red}");
+    // spento: passa intatto
+    p.on = false;
+    let mut c2 = Compressor::new(sr);
+    let mut maxd = 0.0f64;
+    for n in 0..20000 {
+        if n % 32 == 0 {
+            c2.update(&p);
+        }
+        let x = 0.7 * (n as f64 * 0.05).sin();
+        let (y, _) = c2.process(x, x);
+        if n > 2000 {
+            maxd = maxd.max((y - x).abs());
+        }
+    }
+    assert!(maxd < 1e-9);
+}
+
+#[test]
+fn compressor_features() {
+    use mcs_dsp::compressor::*;
+    let sr = 48000.0;
+    let run = |p: &mcs_dsp::Module<CompParams>, amp: f64, n: usize| -> f64 {
+        let mut c = Compressor::new(sr);
+        let mut peak = 0.0f64;
+        for k in 0..n {
+            if k % 32 == 0 {
+                c.update(p);
+            }
+            let x = amp * (2.0 * std::f64::consts::PI * 1000.0 * k as f64 / sr).sin();
+            let (y, _) = c.process(x, x);
+            if k > n - 4000 {
+                peak = peak.max(y.abs());
+            }
+        }
+        peak
+    };
+    let mut p = mcs_dsp::Module::<CompParams>::default();
+    p.sets[0].thresh_db = -20.0;
+    p.sets[0].ratio = 8.0;
+    p.sets[0].attack_ms = 2.0;
+    // retroazione: rapporto effettivo più morbido che in avanti
+    p.sets[0].feed_fwd = false;
+    let fb = run(&p, 0.5, 96000);
+    p.sets[0].feed_fwd = true;
+    let ff = run(&p, 0.5, 96000);
+    assert!(ff < fb * 0.85, "ff {ff} fb {fb}");
+    // sidechain che ignora i bassi: un tono a 60 Hz viene compresso meno
+    let low = |sc: f64| {
+        let mut p = mcs_dsp::Module::<CompParams>::default();
+        p.sets[0].thresh_db = -20.0;
+        p.sets[0].ratio = 4.0;
+        p.sets[0].attack_ms = 2.0;
+        p.sets[0].sc_db = sc;
+        p.sets[0].feed_fwd = true;
+        let mut c = Compressor::new(sr);
+        let mut peak = 0.0f64;
+        for k in 0..96000 {
+            if k % 32 == 0 {
+                c.update(&p);
+            }
+            let x = 0.5 * (2.0 * std::f64::consts::PI * 60.0 * k as f64 / sr).sin();
+            let (y, _) = c.process(x, x);
+            if k > 90000 {
+                peak = peak.max(y.abs());
+            }
+        }
+        peak
+    };
+    assert!(low(12.0) > low(0.0) * 1.3);
+    // inclinazione tonale: positiva alza gli alti rispetto ai bassi
+    let mut p = mcs_dsp::Module::<CompParams>::default();
+    p.sets[0].tilt_db = 4.0;
+    p.sets[0].tilt_freq = 1000.0;
+    let hi = {
+        let mut c = Compressor::new(sr);
+        let mut pk = 0.0f64;
+        for k in 0..48000 {
+            if k % 32 == 0 {
+                c.update(&p);
+            }
+            let x = 0.1 * (2.0 * std::f64::consts::PI * 8000.0 * k as f64 / sr).sin();
+            let (y, _) = c.process(x, x);
+            if k > 40000 {
+                pk = pk.max(y.abs());
+            }
+        }
+        pk
+    };
+    assert!(hi > 0.1 * 1.08, "alti {hi}");
+}

@@ -3,6 +3,7 @@
 pub mod biquad;
 pub mod chain;
 pub mod clipper;
+pub mod compressor;
 pub mod filters;
 pub mod input_output;
 pub mod limiter;

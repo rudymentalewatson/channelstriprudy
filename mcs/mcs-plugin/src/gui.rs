@@ -21,14 +21,14 @@ pub enum Look {
 pub struct GuiState {
     pub look: Look,
     /// Set (A=0, B=1) in modifica per ciascun modulo: Tone, Limiter, Filter, EQ finale, Clipper.
-    pub set_sel: [usize; 5],
+    pub set_sel: [usize; 6],
     /// Fattore di ingrandimento dell'interfaccia (0,6 – 1,4).
     pub zoom: f32,
 }
 
 impl Default for GuiState {
     fn default() -> Self {
-        GuiState { look: Look::Mix, set_sel: [0; 5], zoom: 0.8 }
+        GuiState { look: Look::Mix, set_sel: [0; 6], zoom: 0.75 }
     }
 }
 
@@ -72,7 +72,7 @@ fn theme_for(look: Look, index: usize) -> Theme {
 
 
 /// Un colore di pannello diverso per ogni unità del rack.
-const PLATES: [Theme; 8] = [
+const PLATES: [Theme; 9] = [
     // INPUT: nero
     Theme { panel: Color32::from_rgb(28, 28, 30), edge: Color32::from_rgb(8, 8, 10), text: Color32::from_rgb(236, 228, 208), dim: Color32::from_rgb(160, 154, 140), metal: false },
     // TONE: panna
@@ -89,6 +89,8 @@ const PLATES: [Theme; 8] = [
     Theme { panel: Color32::from_rgb(22, 24, 28), edge: Color32::from_rgb(6, 6, 8), text: Color32::from_rgb(236, 228, 208), dim: Color32::from_rgb(160, 154, 140), metal: false },
     // ANALYSIS: verde scuro
     Theme { panel: Color32::from_rgb(20, 30, 26), edge: Color32::from_rgb(6, 12, 10), text: Color32::from_rgb(190, 236, 200), dim: Color32::from_rgb(120, 170, 130), metal: false },
+    // COMPRESSORE: verde salvia
+    Theme { panel: Color32::from_rgb(70, 104, 90), edge: Color32::from_rgb(22, 38, 30), text: Color32::from_rgb(240, 244, 232), dim: Color32::from_rgb(190, 210, 194), metal: false },
 ];
 
 #[derive(Clone, Copy)]
@@ -105,6 +107,7 @@ const K_LIMITER: KnobStyle = KnobStyle { skirt: Color32::from_rgb(30, 30, 30), c
 const K_FILTER: KnobStyle = KnobStyle { skirt: Color32::from_rgb(30, 30, 34), cap: Color32::from_rgb(52, 92, 150), pointer: Color32::from_rgb(240, 240, 240), ticks: true };
 const K_EQF: KnobStyle = KnobStyle { skirt: Color32::from_rgb(60, 60, 58), cap: Color32::from_rgb(150, 152, 150), pointer: Color32::from_rgb(20, 20, 20), ticks: false };
 const K_CLIP: KnobStyle = KnobStyle { skirt: Color32::from_rgb(28, 28, 28), cap: Color32::from_rgb(214, 128, 36), pointer: Color32::from_rgb(25, 20, 15), ticks: true };
+const K_COMP: KnobStyle = KnobStyle { skirt: Color32::from_rgb(24, 30, 26), cap: Color32::from_rgb(226, 222, 200), pointer: Color32::from_rgb(30, 40, 34), ticks: true };
 const K_OUT: KnobStyle = KnobStyle { skirt: Color32::from_rgb(24, 24, 24), cap: Color32::from_rgb(206, 208, 210), pointer: Color32::from_rgb(10, 10, 10), ticks: true };
 
 fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
@@ -672,7 +675,7 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
-            ui.label(egui::RichText::new("v6").size(11.0).color(Color32::from_rgb(120, 200, 120)));
+            ui.label(egui::RichText::new("v8 COMP").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
             if ui.button("  −  ").clicked() {
                 state.zoom = (state.zoom - 0.05).max(0.4);
@@ -689,7 +692,7 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
             }
         });
         ui.horizontal_top(|ui| {
-            let total = ui.available_width().min(960.0);
+            let total = ui.available_width().min(1700.0);
             let curve_w = (total - 530.0).max(300.0);
             eq_curve(ui, setter, state, params, shared.sr.load(Relaxed), curve_w, 172.0);
             ui.vertical(|ui| {
@@ -700,18 +703,38 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
             });
         });
         ui.add_space(4.0);
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            rack(ui, setter, state, params, shared);
+        let avail = (ctx.screen_rect().bottom() - ui.cursor().top() - 6.0).max(120.0);
+        let wide = ui.available_width() >= 1600.0;
+        egui::ScrollArea::vertical().max_height(avail).auto_shrink([false, false]).show(ui, |ui| {
+            if wide {
+                // finestra larga: due colonne affiancate, nell'ordine del segnale (sinistra poi destra)
+                let left_w = 900.0;
+                let right_w = (ui.available_width() - left_w - 16.0).clamp(700.0, 960.0);
+                ui.horizontal_top(|ui| {
+                    ui.vertical(|ui| {
+                        ui.set_width(left_w);
+                        rack(ui, setter, state, params, shared, 0);
+                    });
+                    ui.add_space(4.0);
+                    ui.vertical(|ui| {
+                        ui.set_width(right_w);
+                        rack(ui, setter, state, params, shared, 1);
+                    });
+                });
+            } else {
+                rack(ui, setter, state, params, shared, 2);
+            }
         });
     });
 }
 
 /// Il rack: unità orizzontali impilate, nell'ordine del segnale.
-fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, shared: &Shared) {
+fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, shared: &Shared, part: u8) {
     let green = Color32::from_rgb(90, 220, 90);
     let amber = Color32::from_rgb(240, 190, 60);
     ui.spacing_mut().item_spacing.y = 5.0;
 
+    if part != 1 {
     // INPUT
     rack_unit(ui, setter, state, 0, 104.0, "INPUT", "PREAMP / TRIM", None, None, None, |ui, _s, th| {
         knob(ui, setter, &p.in_trim, "TRIM", 44.0, K_INPUT, th);
@@ -746,6 +769,49 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
         }
     });
 
+    }
+
+    // COMPRESSORE
+    if part != 1 {
+        rack_unit(ui, setter, state, 8, 176.0, "COMPRESSORE", "MASTER DYNAMICS", Some(&p.cmp_on), Some(&p.cmp_mode), Some(5), |ui, s, th| {
+            let q = &p.sets[s];
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    knob(ui, setter, &q.cmp_thr, "SOGLIA", 38.0, K_COMP, th);
+                    knob(ui, setter, &q.cmp_ratio, "RATIO", 38.0, K_COMP, th);
+                    knob(ui, setter, &q.cmp_att, "ATTACCO", 38.0, K_COMP, th);
+                    ui.vertical(|ui| {
+                        ui.add_space(14.0);
+                        toggle(ui, setter, &q.cmp_att_auto, "AUTO", th, green);
+                    });
+                    knob(ui, setter, &q.cmp_rel, "RILASCIO", 38.0, K_COMP, th);
+                    ui.vertical(|ui| {
+                        ui.add_space(14.0);
+                        toggle(ui, setter, &q.cmp_rel_auto, "AUTO", th, green);
+                    });
+                    knob(ui, setter, &q.cmp_mk, "MAKEUP", 38.0, K_COMP, th);
+                    knob(ui, setter, &q.cmp_mix, "MIX", 38.0, K_COMP, th);
+                });
+                ui.horizontal(|ui| {
+                    knob(ui, setter, &q.cmp_tilt, "TONO", 34.0, K_COMP, th);
+                    knob(ui, setter, &q.cmp_tilt_f, "FREQ", 34.0, K_COMP, th);
+                    ui.add_space(14.0);
+                    knob(ui, setter, &q.cmp_sc_db, "SC FILTRO", 34.0, K_COMP, th);
+                    knob(ui, setter, &q.cmp_sc_f, "SC FREQ", 34.0, K_COMP, th);
+                    ui.add_space(14.0);
+                    ui.vertical(|ui| {
+                        ui.add_space(8.0);
+                        toggle(ui, setter, &q.cmp_ff, "AVANTI", th, amber);
+                        toggle(ui, setter, &q.cmp_xf, "TRAFO", th, amber);
+                    });
+                });
+            });
+            let gr = -shared.comp_gr.load(Relaxed);
+            vu_meter(ui, 150.0, 120.0, "GAIN REDUCTION", gr, 0.0, 12.0, &[(0.0, "0"), (3.0, "3"), (6.0, "6"), (9.0, "9"), (12.0, "12")], 9.0);
+        });
+    }
+
+    if part != 1 {
     // LIMITER
     rack_unit(ui, setter, state, 2, 120.0, "LIMITER", "PEAK LIMITER", Some(&p.lim_on), Some(&p.lim_mode), Some(1), |ui, s, th| {
         let q = &p.sets[s];
@@ -765,6 +831,9 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
         vu_meter(ui, 150.0, 100.0, "GAIN REDUCTION", gr, 0.0, 12.0, &[(0.0, "0"), (3.0, "3"), (6.0, "6"), (9.0, "9"), (12.0, "12")], 9.0);
     });
 
+    }
+
+    if part != 0 {
     // FILTER
     rack_unit(ui, setter, state, 3, 104.0, "FILTER", "PRESENCE", Some(&p.flt_on), Some(&p.flt_mode), Some(2), |ui, s, th| {
         let q = &p.sets[s];
@@ -808,4 +877,5 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
         let lufs = shared.momentary.load(Relaxed);
         vu_meter(ui, 190.0, 100.0, "LUFS", lufs, -40.0, 0.0, &[(-40.0, "-40"), (-30.0, "-30"), (-20.0, "-20"), (-14.0, "-14"), (-8.0, "-8"), (0.0, "0")], -9.0);
     });
+    }
 }

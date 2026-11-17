@@ -1,6 +1,7 @@
-//! Catena completa: Input, Tone, Limiter, Filter, EQ finale, Clipper, Output, più Analysis.
+//! Catena completa: Input, Tone, Compressor, Limiter, Filter, EQ finale, Clipper, Output, più Analysis.
 
 use crate::clipper::{Clipper, ClipperParams};
+use crate::compressor::{CompParams, Compressor};
 use crate::filters::*;
 use crate::input_output::*;
 use crate::limiter::{Limiter, LimiterParams};
@@ -12,6 +13,7 @@ use crate::util::*;
 pub struct ChainParams {
     pub input: InputParams,
     pub tone: Module<ToneParams>,
+    pub comp: Module<CompParams>,
     pub limiter: Module<LimiterParams>,
     pub filter: Module<FilterParams>,
     pub eqf: Module<EqFinaleParams>,
@@ -26,6 +28,7 @@ impl Default for ChainParams {
         ChainParams {
             input: Default::default(),
             tone: Default::default(),
+            comp: Default::default(),
             limiter: Default::default(),
             filter: Default::default(),
             eqf: Default::default(),
@@ -39,6 +42,7 @@ impl Default for ChainParams {
 pub struct Chain {
     pub input: Input,
     pub tone: Tone,
+    pub comp: Compressor,
     pub limiter: Limiter,
     pub filter: Filter,
     pub eqf: EqFinale,
@@ -52,6 +56,7 @@ impl Chain {
         let mut c = Chain {
             input: Input::new(sr),
             tone: Tone::new(sr),
+            comp: Compressor::new(sr),
             limiter: Limiter::new(sr),
             filter: Filter::new(sr),
             eqf: EqFinale::new(sr),
@@ -77,6 +82,7 @@ impl Chain {
             let end = (i + SUB).min(n);
             self.input.update(&p.input);
             self.tone.update(&p.tone);
+            self.comp.update(&p.comp);
             self.limiter.update(&p.limiter);
             self.filter.update(&p.filter);
             self.eqf.update(&p.eqf);
@@ -85,6 +91,7 @@ impl Chain {
             for k in i..end {
                 let (a, b) = self.input.process(l[k] as f64, r[k] as f64);
                 let (a, b) = self.tone.process(a, b);
+                let (a, b) = self.comp.process(a, b);
                 let (a, b) = self.limiter.process(a, b);
                 let (a, b) = self.filter.process(a, b);
                 let (a, b) = self.eqf.process(a, b);
