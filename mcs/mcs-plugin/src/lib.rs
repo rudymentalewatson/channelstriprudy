@@ -383,7 +383,7 @@ pub struct McsParams {
 impl Default for McsParams {
     fn default() -> Self {
         McsParams {
-            editor_state: EguiState::from_size(1250, 640),
+            editor_state: EguiState::from_size(1160, 640),
             in_trim: db("Input Trim", 0.0, -24.0, 24.0),
             in_pol_l: BoolParam::new("Polarità L", false),
             in_pol_r: BoolParam::new("Polarità R", false),

@@ -316,7 +316,7 @@ fn rack_unit(
         }
         set = state.set_sel[slot];
     }
-    let w = ui.available_width().clamp(700.0, 960.0);
+    let w = ui.available_width().clamp(640.0, 960.0);
     let (rect, _) = ui.allocate_exact_size(Vec2::new(w, height), Sense::hover());
     let painter = ui.painter_at(rect);
     let ear = 28.0;
@@ -675,7 +675,7 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
-            ui.label(egui::RichText::new("v8 COMP").size(11.0).color(Color32::from_rgb(120, 200, 120)));
+            ui.label(egui::RichText::new("v9").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
             if ui.button("  −  ").clicked() {
                 state.zoom = (state.zoom - 0.05).max(0.4);
@@ -704,12 +704,12 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
         });
         ui.add_space(4.0);
         let avail = (ctx.screen_rect().bottom() - ui.cursor().top() - 6.0).max(120.0);
-        let wide = ui.available_width() >= 1600.0;
+        let wide = ui.available_width() >= 1540.0;
         egui::ScrollArea::vertical().max_height(avail).auto_shrink([false, false]).show(ui, |ui| {
             if wide {
                 // finestra larga: due colonne affiancate, nell'ordine del segnale (sinistra poi destra)
-                let left_w = 900.0;
-                let right_w = (ui.available_width() - left_w - 16.0).clamp(700.0, 960.0);
+                let left_w = 880.0;
+                let right_w = (ui.available_width() - left_w - 16.0).clamp(640.0, 960.0);
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
                         ui.set_width(left_w);
@@ -806,7 +806,7 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
                     });
                 });
             });
-            let gr = -shared.comp_gr.load(Relaxed);
+            let gr = shared.comp_gr.load(Relaxed);
             vu_meter(ui, 150.0, 120.0, "GAIN REDUCTION", gr, 0.0, 12.0, &[(0.0, "0"), (3.0, "3"), (6.0, "6"), (9.0, "9"), (12.0, "12")], 9.0);
         });
     }
