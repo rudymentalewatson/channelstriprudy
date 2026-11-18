@@ -1,6 +1,6 @@
 //! Interfaccia grafica: pannelli vintage con manopole disegnate a mano (egui).
 
-use crate::{McsParams, ModeP, Shared};
+use crate::{ClipP, McsParams, ModeP, Shared};
 use nih_plug::prelude::*;
 use nih_plug_egui::egui::{
     self, Align2, Color32, ComboBox, CornerRadius, FontId, Margin, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2,
@@ -83,8 +83,8 @@ const PLATES: [Theme; 9] = [
     Theme { panel: Color32::from_rgb(34, 70, 126), edge: Color32::from_rgb(12, 28, 58), text: Color32::from_rgb(238, 242, 250), dim: Color32::from_rgb(176, 194, 222), metal: false },
     // EQ FINALE: grafite
     Theme { panel: Color32::from_rgb(70, 74, 74), edge: Color32::from_rgb(24, 26, 26), text: Color32::from_rgb(232, 226, 208), dim: Color32::from_rgb(168, 166, 154), metal: false },
-    // CLIPPER: marrone caldo
-    Theme { panel: Color32::from_rgb(84, 52, 40), edge: Color32::from_rgb(30, 16, 12), text: Color32::from_rgb(244, 230, 206), dim: Color32::from_rgb(196, 170, 144), metal: false },
+    // CLIPPER: ottone dorato
+    Theme { panel: Color32::from_rgb(190, 152, 64), edge: Color32::from_rgb(72, 52, 16), text: Color32::from_rgb(58, 38, 10), dim: Color32::from_rgb(104, 76, 30), metal: true },
     // OUTPUT: nero
     Theme { panel: Color32::from_rgb(22, 24, 28), edge: Color32::from_rgb(6, 6, 8), text: Color32::from_rgb(236, 228, 208), dim: Color32::from_rgb(160, 154, 140), metal: false },
     // ANALYSIS: verde scuro
@@ -108,6 +108,8 @@ const K_FILTER: KnobStyle = KnobStyle { skirt: Color32::from_rgb(30, 30, 34), ca
 const K_EQF: KnobStyle = KnobStyle { skirt: Color32::from_rgb(60, 60, 58), cap: Color32::from_rgb(150, 152, 150), pointer: Color32::from_rgb(20, 20, 20), ticks: false };
 const K_CLIP: KnobStyle = KnobStyle { skirt: Color32::from_rgb(28, 28, 28), cap: Color32::from_rgb(214, 128, 36), pointer: Color32::from_rgb(25, 20, 15), ticks: true };
 const K_COMP: KnobStyle = KnobStyle { skirt: Color32::from_rgb(24, 30, 26), cap: Color32::from_rgb(226, 222, 200), pointer: Color32::from_rgb(30, 40, 34), ticks: true };
+const INNER: Theme = Theme { panel: Color32::from_rgb(38, 10, 10), edge: Color32::BLACK, text: Color32::from_rgb(244, 236, 218), dim: Color32::from_rgb(214, 186, 160), metal: false };
+const K_CLIPG: KnobStyle = KnobStyle { skirt: Color32::from_rgb(10, 10, 11), cap: Color32::from_rgb(34, 34, 36), pointer: Color32::from_rgb(238, 234, 224), ticks: true };
 const K_OUT: KnobStyle = KnobStyle { skirt: Color32::from_rgb(24, 24, 24), cap: Color32::from_rgb(206, 208, 210), pointer: Color32::from_rgb(10, 10, 10), ticks: true };
 
 fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
@@ -325,6 +327,9 @@ fn rack_unit(
     let plate = Rect::from_min_max(rect.min + Vec2::new(ear, 1.0), rect.max - Vec2::new(ear, 1.0));
     // pannello: sfumatura, righe di spazzolatura, bordo e luci
     gradient_rect(&painter, plate, mix(th.panel, Color32::WHITE, 0.12), mix(th.panel, Color32::BLACK, 0.22));
+    if idx == 5 {
+        gold_mottle(&painter.with_clip_rect(plate), plate);
+    }
     let mut y = plate.top() + 3.0;
     let mut k = 0;
     while y < plate.bottom() - 2.0 {
@@ -675,7 +680,7 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
-            ui.label(egui::RichText::new("v9").size(11.0).color(Color32::from_rgb(120, 200, 120)));
+            ui.label(egui::RichText::new("v10 ORO").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
             if ui.button("  −  ").clicked() {
                 state.zoom = (state.zoom - 0.05).max(0.4);
@@ -726,6 +731,93 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
             }
         });
     });
+}
+
+/// Macchie sottili sull'ottone, per un aspetto meno piatto.
+fn gold_mottle(p: &egui::Painter, r: Rect) {
+    for i in 0..18 {
+        let f = i as f32;
+        let x = r.left() + r.width() * ((f * 7.31).sin() * 0.5 + 0.5);
+        let y = r.top() + r.height() * ((f * 3.17 + 1.0).sin() * 0.5 + 0.5);
+        let rad = 22.0 + 44.0 * ((f * 1.91).cos() * 0.5 + 0.5);
+        let col = if i % 2 == 0 { Color32::from_rgba_unmultiplied(255, 236, 150, 14) } else { Color32::from_rgba_unmultiplied(90, 60, 10, 16) };
+        p.circle_filled(Pos2::new(x, y), rad, col);
+    }
+}
+
+/// Riquadro incassato scuro, con titolo opzionale.
+fn inset_panel(ui: &mut Ui, w: f32, h: f32, title: &str, f: impl FnOnce(&mut Ui)) {
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
+    let p = ui.painter_at(rect);
+    gradient_rect(&p, rect, Color32::from_rgb(64, 16, 14), Color32::from_rgb(24, 6, 6));
+    p.rect_stroke(rect, 4.0, Stroke::new(1.5, Color32::from_rgb(8, 3, 3)), StrokeKind::Inside);
+    p.line_segment([rect.left_top() + Vec2::new(3.0, 1.5), rect.right_top() + Vec2::new(-3.0, 1.5)], Stroke::new(1.0, Color32::from_white_alpha(26)));
+    let mut top = 4.0;
+    if !title.is_empty() {
+        p.text(rect.left_top() + Vec2::new(8.0, 9.0), Align2::LEFT_CENTER, title, FontId::proportional(10.5), INNER.text);
+        top = 18.0;
+    }
+    let inner = Rect::from_min_max(rect.min + Vec2::new(5.0, top), rect.max - Vec2::new(5.0, 2.0));
+    ui.scope_builder(UiBuilder::new().max_rect(inner), |ui| {
+        ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+        f(ui)
+    });
+}
+
+/// Riga con LED e etichetta, cliccabile. Restituisce true se cliccata.
+fn led_choice(ui: &mut Ui, w: f32, label: &str, on: bool, col: Color32) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 16.0), Sense::click());
+    let p = ui.painter_at(rect);
+    let c = Pos2::new(rect.left() + 7.0, rect.center().y);
+    if on {
+        p.circle_filled(c, 5.5, col.gamma_multiply(0.25));
+        p.circle_filled(c, 3.2, col);
+    } else {
+        p.circle_filled(c, 3.0, mix(col, Color32::BLACK, 0.8));
+    }
+    let t = if on || resp.hovered() { INNER.text } else { INNER.dim };
+    p.text(Pos2::new(rect.left() + 18.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(10.5), t);
+    resp.clicked()
+}
+
+/// Scala a LED stereo (picchi), come i misuratori a punti dei convertitori.
+fn led_ladder(ui: &mut Ui, w: f32, shared: &Shared) {
+    const T: [f32; 31] = [
+        -48.0, -44.0, -40.0, -36.0, -33.0, -30.0, -28.0, -26.0, -24.0, -22.0, -20.0, -19.0, -18.0, -17.0, -16.0, -15.0, -14.0, -13.0, -12.0, -11.0, -10.0,
+        -9.0, -8.0, -7.0, -6.0, -5.0, -4.0, -3.0, -2.0, -1.0, 0.0,
+    ];
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 44.0), Sense::hover());
+    let p = ui.painter_at(rect);
+    p.rect(rect, CornerRadius::same(4), Color32::from_rgb(12, 10, 10), Stroke::new(1.5, Color32::from_rgb(70, 50, 16)), StrokeKind::Inside);
+    let step = (w - 30.0) / T.len() as f32;
+    let lv = [shared.peak_l.load(Relaxed), shared.peak_r.load(Relaxed)];
+    for (row, name) in ["L", "R"].iter().enumerate() {
+        let y = rect.top() + if row == 0 { 10.0 } else { 34.0 };
+        p.text(Pos2::new(rect.left() + 7.0, y), Align2::LEFT_CENTER, *name, FontId::proportional(9.0), INNER.dim);
+        let db = 20.0 * lv[row].max(1e-6).log10();
+        for (i, t) in T.iter().enumerate() {
+            let pos = Pos2::new(rect.left() + 24.0 + step * (i as f32 + 0.5), y);
+            let base = if *t <= -9.0 {
+                Color32::from_rgb(60, 220, 70)
+            } else if *t <= -5.0 {
+                Color32::from_rgb(236, 206, 60)
+            } else {
+                Color32::from_rgb(240, 60, 50)
+            };
+            if db >= *t {
+                p.circle_filled(pos, 4.6, base.gamma_multiply(0.22));
+                p.circle_filled(pos, 2.7, base);
+            } else {
+                p.circle_filled(pos, 2.4, mix(base, Color32::BLACK, 0.82));
+            }
+        }
+    }
+    for (i, t) in T.iter().enumerate() {
+        if i % 3 == 0 || i == T.len() - 1 {
+            let x = rect.left() + 24.0 + step * (i as f32 + 0.5);
+            p.text(Pos2::new(x, rect.top() + 22.0), Align2::CENTER_CENTER, format!("{:.0}", t), FontId::proportional(7.5), INNER.dim);
+        }
+    }
 }
 
 /// Il rack: unità orizzontali impilate, nell'ordine del segnale.
@@ -856,15 +948,34 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
     });
 
     // CLIPPER
-    rack_unit(ui, setter, state, 5, 104.0, "CLIPPER", "SOFT CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, th| {
+    rack_unit(ui, setter, state, 5, 168.0, "CLIPPER", "OVERSAMPLED SOFT CLIPPER", Some(&p.clip_on), Some(&p.clip_mode), Some(4), |ui, s, _th| {
         let q = &p.sets[s];
-        knob(ui, setter, &q.clip_drive, "DRIVE", 44.0, K_CLIP, th);
-        knob(ui, setter, &q.clip_ceil, "CEILING", 44.0, K_CLIP, th);
-        knob(ui, setter, &q.clip_mix, "MIX", 44.0, K_CLIP, th);
+        let bw = ui.available_width();
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("MODELLO").size(10.0).color(th.dim));
-            dropdown(ui, setter, &q.clip_model, &format!("clipm{}", s), 120.0);
-            toggle(ui, setter, &q.clip_post, "POST CLIP", th, amber);
+            ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+            ui.horizontal(|ui| {
+                for (param, name) in [(&q.clip_drive, "DRIVE"), (&q.clip_ceil, "CEILING"), (&q.clip_mix, "MIX")] {
+                    inset_panel(ui, 70.0, 98.0, "", |ui| {
+                        knob(ui, setter, param, name, 38.0, K_CLIPG, INNER);
+                    });
+                }
+                inset_panel(ui, 112.0, 98.0, "MODELLO", |ui| {
+                    let green = Color32::from_rgb(60, 220, 70);
+                    for (v, name) in [(ClipP::Hard, "DURO"), (ClipP::Tanh, "MORBIDO"), (ClipP::Asym, "ASIMM."), (ClipP::Atan, "ARCTAN")] {
+                        if led_choice(ui, 98.0, name, q.clip_model.value() == v, green) {
+                            setter.begin_set_parameter(&q.clip_model);
+                            setter.set_parameter(&q.clip_model, v);
+                            setter.end_set_parameter(&q.clip_model);
+                        }
+                    }
+                    if led_choice(ui, 98.0, "POST CLIP", q.clip_post.value(), amber) {
+                        setter.begin_set_parameter(&q.clip_post);
+                        setter.set_parameter(&q.clip_post, !q.clip_post.value());
+                        setter.end_set_parameter(&q.clip_post);
+                    }
+                });
+            });
+            led_ladder(ui, bw, shared);
         });
     });
 
