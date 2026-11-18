@@ -680,7 +680,7 @@ pub fn draw(ctx: &egui::Context, setter: &ParamSetter, state: &mut GuiState, par
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("M C S").strong().size(26.0).color(Color32::from_rgb(236, 214, 150)));
             ui.label(egui::RichText::new("MULTI CHANNEL STRIP").size(13.0).color(Color32::from_rgb(190, 180, 160)));
-            ui.label(egui::RichText::new("v10 ORO").size(11.0).color(Color32::from_rgb(120, 200, 120)));
+            ui.label(egui::RichText::new("v11 BLU").size(11.0).color(Color32::from_rgb(120, 200, 120)));
             ui.add_space(12.0);
             if ui.button("  −  ").clicked() {
                 state.zoom = (state.zoom - 0.05).max(0.4);
@@ -820,6 +820,241 @@ fn led_ladder(ui: &mut Ui, w: f32, shared: &Shared) {
     }
 }
 
+
+// ---------- Pannello compressore: piastra blu notte, manopole zigrinate con calotta luminosa ----------
+
+/// Sfera con luce in alto a sinistra, ottenuta con cerchi concentrici sempre più chiari.
+fn shaded_disc(p: &egui::Painter, c: Pos2, r: f32, light: Color32, dark: Color32, hl: Vec2) {
+    for i in 0..9 {
+        let t = i as f32 / 8.0;
+        p.circle_filled(c + hl * (t * r), r * (1.0 - 0.88 * t), mix(dark, light, t));
+    }
+}
+
+fn elys_knob(ui: &mut Ui, setter: &ParamSetter, p: &FloatParam, id: egui::Id, c: Pos2, r: f32, caption: &str) {
+    let hit = Rect::from_center_size(c, Vec2::splat(r * 2.0 + 8.0));
+    let resp = ui.interact(hit, id, Sense::click_and_drag());
+    if resp.drag_started() {
+        setter.begin_set_parameter(p);
+    }
+    if resp.dragged() {
+        let k = if ui.input(|i| i.modifiers.shift) { 0.0008 } else { 0.006 };
+        let v = (p.unmodulated_normalized_value() - resp.drag_delta().y * k).clamp(0.0, 1.0);
+        setter.set_parameter_normalized(p, v);
+    }
+    if resp.drag_stopped() {
+        setter.end_set_parameter(p);
+    }
+    if resp.double_clicked() {
+        setter.begin_set_parameter(p);
+        setter.set_parameter_normalized(p, p.default_normalized_value());
+        setter.end_set_parameter(p);
+    }
+    let norm = p.unmodulated_normalized_value();
+    let pt = ui.painter();
+    let white = Color32::from_rgb(214, 224, 246);
+    let start = 0.75 * PI;
+    let sweep = 1.5 * PI;
+    // tacche e valori sulla scala
+    for i in 0..=10 {
+        let a = start + sweep * (i as f32 / 10.0);
+        let d = Vec2::new(a.cos(), a.sin());
+        let len = if i % 5 == 0 { 7.0 } else { 4.5 };
+        pt.line_segment([c + d * (r + 3.0), c + d * (r + 3.0 + len)], Stroke::new(1.0, white.gamma_multiply(0.6)));
+    }
+    for i in 0..5 {
+        let n = i as f32 / 4.0;
+        let a = start + sweep * n;
+        let d = Vec2::new(a.cos(), a.sin());
+        pt.text(c + d * (r + 14.0), Align2::CENTER_CENTER, p.normalized_value_to_string(n, false), FontId::proportional(7.5), white);
+    }
+    // ombra, corpo grigio zigrinato, fascia argentata, calotta blu
+    pt.circle_filled(c + Vec2::new(3.0, 5.0), r * 1.06, Color32::from_black_alpha(60));
+    pt.circle_filled(c + Vec2::new(2.0, 3.0), r * 1.02, Color32::from_black_alpha(90));
+    shaded_disc(pt, c, r, Color32::from_rgb(186, 188, 194), Color32::from_rgb(84, 86, 92), Vec2::new(-0.12, -0.16));
+    pt.circle_stroke(c, r, Stroke::new(1.0_f32, Color32::from_black_alpha(150)));
+    for k in 0..28 {
+        let a = k as f32 * std::f32::consts::TAU / 28.0;
+        let d = Vec2::new(a.cos(), a.sin());
+        pt.circle_filled(c + d * (r * 0.88), 1.2, Color32::from_black_alpha(130));
+    }
+    pt.circle_stroke(c, r * 0.76, Stroke::new(1.0_f32, Color32::from_black_alpha(70)));
+    pt.circle_stroke(c, r * 0.66, Stroke::new(3.2_f32, Color32::from_rgb(222, 226, 234)));
+    pt.circle_stroke(c, r * 0.58, Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(10, 20, 70, 160)));
+    shaded_disc(pt, c, r * 0.57, Color32::from_rgb(110, 160, 255), Color32::from_rgb(14, 32, 128), Vec2::new(-0.10, -0.14));
+    pt.circle_filled(c + Vec2::new(-r * 0.17, -r * 0.21), r * 0.14, Color32::from_white_alpha(80));
+    let a = start + sweep * norm;
+    let d = Vec2::new(a.cos(), a.sin());
+    pt.line_segment([c + d * (r * 0.28), c + d * (r * 0.55)], Stroke::new(2.2_f32, Color32::from_rgb(240, 246, 255)));
+    pt.line_segment([c + d * (r * 0.80), c + d * (r * 0.96)], Stroke::new(2.0_f32, Color32::from_rgb(250, 250, 252)));
+    // didascalia e valore
+    pt.text(c + Vec2::new(0.0, r + 15.0), Align2::CENTER_CENTER, caption, FontId::proportional(10.5), Color32::WHITE);
+    pt.text(c + Vec2::new(0.0, r + 26.0), Align2::CENTER_CENTER, p.normalized_value_to_string(norm, true), FontId::monospace(8.5), Color32::from_rgb(150, 190, 255));
+}
+
+/// Pulsante tondo cromato con LED blu. Restituisce true se cliccato.
+fn elys_btn(ui: &mut Ui, id: egui::Id, c: Pos2, label: &str, on: bool) -> bool {
+    let resp = ui.interact(Rect::from_center_size(c, Vec2::splat(26.0)), id, Sense::click());
+    let p = ui.painter();
+    p.circle_filled(c + Vec2::new(2.0, 3.0), 12.0, Color32::from_black_alpha(90));
+    shaded_disc(p, c, 11.5, Color32::from_rgb(232, 234, 240), Color32::from_rgb(86, 88, 96), Vec2::new(-0.10, -0.14));
+    p.circle_stroke(c, 11.5, Stroke::new(1.0_f32, Color32::from_black_alpha(140)));
+    if on {
+        p.circle_filled(c, 16.0, Color32::from_rgba_unmultiplied(80, 140, 255, 40));
+        shaded_disc(p, c, 7.6, Color32::from_rgb(190, 225, 255), Color32::from_rgb(34, 92, 230), Vec2::new(-0.10, -0.14));
+    } else {
+        shaded_disc(p, c, 7.6, Color32::from_rgb(206, 210, 218), Color32::from_rgb(118, 122, 132), Vec2::new(-0.10, -0.14));
+    }
+    let col = if resp.hovered() { Color32::WHITE } else { Color32::from_rgb(214, 224, 246) };
+    p.text(c + Vec2::new(0.0, 21.0), Align2::CENTER_CENTER, label, FontId::proportional(9.0), col);
+    resp.clicked()
+}
+
+fn param_toggle(setter: &ParamSetter, p: &BoolParam) {
+    setter.begin_set_parameter(p);
+    setter.set_parameter(p, !p.value());
+    setter.end_set_parameter(p);
+}
+
+fn comp_panel(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, shared: &Shared) {
+    let w = ui.available_width().clamp(640.0, 960.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 240.0), Sense::hover());
+    let mode = p.cmp_mode.value();
+    if mode == ModeP::St {
+        state.set_sel[5] = 0;
+    }
+    let s = state.set_sel[5];
+    let q = &p.sets[s];
+
+    // cornice in alluminio con fessure da rack
+    {
+        let pt = ui.painter_at(rect);
+        gradient_rect(&pt, rect, Color32::from_rgb(222, 224, 229), Color32::from_rgb(146, 148, 156));
+        let mut y = rect.top() + 2.0;
+        let mut k = 0;
+        while y < rect.bottom() {
+            pt.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], Stroke::new(1.0_f32, if k % 2 == 0 { Color32::from_white_alpha(14) } else { Color32::from_black_alpha(8) }));
+            y += 2.0;
+            k += 1;
+        }
+        pt.rect_stroke(rect, 3.0, Stroke::new(1.5_f32, Color32::from_rgb(70, 72, 80)), StrokeKind::Inside);
+        for yy in [rect.top() + 28.0, rect.bottom() - 28.0] {
+            for x in [rect.left() + 13.0, rect.right() - 13.0] {
+                let sl = Rect::from_center_size(Pos2::new(x, yy), Vec2::new(18.0, 9.0));
+                pt.rect_filled(sl.translate(Vec2::new(0.0, 1.0)), 4.5, Color32::from_white_alpha(60));
+                pt.rect_filled(sl, 4.5, Color32::from_rgb(30, 30, 34));
+            }
+        }
+    }
+    // piastra blu notte con grana fine
+    let plate = Rect::from_min_max(rect.min + Vec2::new(28.0, 8.0), rect.max - Vec2::new(28.0, 8.0));
+    {
+        let pt = ui.painter_at(plate);
+        gradient_rect(&pt, plate, Color32::from_rgb(40, 62, 130), Color32::from_rgb(14, 24, 70));
+        for i in 0..220 {
+            let f = i as f32;
+            let fx = (f * 12.9898).sin() * 43758.547;
+            let fy = (f * 78.233).sin() * 12345.679;
+            let x = plate.left() + plate.width() * (fx - fx.floor());
+            let y = plate.top() + plate.height() * (fy - fy.floor());
+            let col = if i % 3 == 0 { Color32::from_white_alpha(26) } else { Color32::from_black_alpha(34) };
+            pt.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::splat(1.3)), 0.0, col);
+        }
+        pt.rect_stroke(plate, 4.0, Stroke::new(2.0_f32, Color32::from_rgb(8, 12, 36)), StrokeKind::Inside);
+        pt.line_segment([plate.left_top() + Vec2::new(4.0, 2.0), plate.right_top() + Vec2::new(-4.0, 2.0)], Stroke::new(1.0_f32, Color32::from_white_alpha(46)));
+    }
+
+    let cx = plate.center().x;
+    let cy = plate.top() + 104.0;
+    let top = plate.top();
+    let r_k = ((cx - 90.0 - (plate.left() + 14.0)) / 4.0 * 0.32).clamp(15.0, 25.0);
+    let step = (cx - 96.0 - (plate.left() + 14.0)) / 4.0;
+    let x_l = |i: usize| plate.left() + 14.0 + step * (i as f32 + 0.5);
+    let x_r = |i: usize| cx + 96.0 + step * (i as f32 + 0.5);
+    let y1 = top + 52.0;
+    let y2 = top + 140.0;
+    let id = |n: &str| egui::Id::new(("ek", n, s));
+
+    // blocco sinistro: dinamica e filtri
+    elys_knob(ui, setter, &q.cmp_thr, id("thr"), Pos2::new(x_l(0), y1), r_k, "SOGLIA");
+    elys_knob(ui, setter, &q.cmp_att, id("att"), Pos2::new(x_l(1), y1), r_k, "ATTACCO");
+    elys_knob(ui, setter, &q.cmp_rel, id("rel"), Pos2::new(x_l(2), y1), r_k, "RILASCIO");
+    elys_knob(ui, setter, &q.cmp_ratio, id("ratio"), Pos2::new(x_l(3), y1), r_k, "RATIO");
+    elys_knob(ui, setter, &q.cmp_tilt, id("tilt"), Pos2::new(x_l(0), y2), r_k, "TONO");
+    elys_knob(ui, setter, &q.cmp_tilt_f, id("tiltf"), Pos2::new(x_l(1), y2), r_k, "FREQ TONO");
+    elys_knob(ui, setter, &q.cmp_sc_db, id("sc"), Pos2::new(x_l(2), y2), r_k, "SC FILTRO");
+    elys_knob(ui, setter, &q.cmp_sc_f, id("scf"), Pos2::new(x_l(3), y2), r_k, "SC FREQ");
+
+    // blocco destro: mix, makeup, attivo e selettore del canale; sotto, i pulsanti
+    elys_knob(ui, setter, &q.cmp_mix, id("mix"), Pos2::new(x_r(0), y1), r_k, "MIX");
+    elys_knob(ui, setter, &q.cmp_mk, id("mk"), Pos2::new(x_r(1), y1), r_k, "MAKEUP");
+    if elys_btn(ui, id("on"), Pos2::new(x_r(2), y1), "ATTIVO", p.cmp_on.value()) {
+        param_toggle(setter, &p.cmp_on);
+    }
+    let sel_label = match mode {
+        ModeP::St => "--",
+        ModeP::Duo => if s == 0 { "L" } else { "R" },
+        ModeP::Ms => if s == 0 { "MID" } else { "SIDE" },
+    };
+    if elys_btn(ui, id("sel"), Pos2::new(x_r(3), y1), sel_label, mode != ModeP::St) && mode != ModeP::St {
+        state.set_sel[5] = 1 - state.set_sel[5];
+    }
+    if elys_btn(ui, id("aatt"), Pos2::new(x_r(0), y2), "AUTO ATT", q.cmp_att_auto.value()) {
+        param_toggle(setter, &q.cmp_att_auto);
+    }
+    if elys_btn(ui, id("arel"), Pos2::new(x_r(1), y2), "AUTO REL", q.cmp_rel_auto.value()) {
+        param_toggle(setter, &q.cmp_rel_auto);
+    }
+    if elys_btn(ui, id("ff"), Pos2::new(x_r(2), y2), "AVANTI", q.cmp_ff.value()) {
+        param_toggle(setter, &q.cmp_ff);
+    }
+    if elys_btn(ui, id("xf"), Pos2::new(x_r(3), y2), "TRAFO", q.cmp_xf.value()) {
+        param_toggle(setter, &q.cmp_xf);
+    }
+    // modo ST / DUO / MS sotto l'anello
+    for (k, (name, m)) in [("ST", ModeP::St), ("DUO", ModeP::Duo), ("MS", ModeP::Ms)].iter().enumerate() {
+        let c = Pos2::new(cx + (k as f32 - 1.0) * 58.0, top + 196.0);
+        if elys_btn(ui, id(name), c, name, mode == *m) && mode != *m {
+            setter.begin_set_parameter(&p.cmp_mode);
+            setter.set_parameter(&p.cmp_mode, *m);
+            setter.end_set_parameter(&p.cmp_mode);
+            state.set_sel[5] = 0;
+        }
+    }
+
+    // anello centrale: LED di riduzione di guadagno e disco con il marchio
+    let pt = ui.painter();
+    let c = Pos2::new(cx, cy);
+    const T: [f32; 16] = [1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 12.0, 14.0, 16.0, 18.0, 20.0];
+    let gr = shared.comp_gr.load(Relaxed);
+    let rl = 66.0;
+    for (i, t) in T.iter().enumerate() {
+        let phi = (8.0 + i as f32 * (164.0 / 15.0)).to_radians();
+        let lit = gr >= *t;
+        for sx in [-1.0_f32, 1.0] {
+            let pos = c + Vec2::new(sx * rl * phi.sin(), -rl * phi.cos());
+            if lit {
+                pt.circle_filled(pos, 5.2, Color32::from_rgba_unmultiplied(255, 50, 40, 50));
+                pt.circle_filled(pos, 2.8, Color32::from_rgb(255, 70, 56));
+            } else {
+                pt.circle_filled(pos, 2.5, Color32::from_rgb(70, 18, 22));
+            }
+            if i % 2 == 0 {
+                let lp = c + Vec2::new(sx * (rl + 11.0) * phi.sin(), -(rl + 11.0) * phi.cos());
+                pt.text(lp, Align2::CENTER_CENTER, format!("{}", *t as i32), FontId::proportional(7.0), Color32::from_rgb(190, 204, 236));
+            }
+        }
+    }
+    pt.text(Pos2::new(cx, top + 14.0), Align2::CENTER_CENTER, "GAIN REDUCTION", FontId::proportional(8.0), Color32::from_rgb(190, 204, 236));
+    pt.circle_filled(c + Vec2::new(2.0, 4.0), 56.0, Color32::from_black_alpha(80));
+    shaded_disc(pt, c, 56.0, Color32::from_rgb(236, 238, 244), Color32::from_rgb(110, 112, 120), Vec2::new(-0.08, -0.12));
+    pt.circle_stroke(c, 56.0, Stroke::new(1.0_f32, Color32::from_black_alpha(140)));
+    pt.circle_stroke(c, 45.0, Stroke::new(1.5_f32, Color32::from_black_alpha(70)));
+    shaded_disc(pt, c, 43.0, Color32::from_rgb(252, 252, 254), Color32::from_rgb(222, 224, 232), Vec2::new(-0.05, -0.08));
+    pt.text(c + Vec2::new(0.0, -6.0), Align2::CENTER_CENTER, "M C S", FontId::proportional(25.0), Color32::from_rgb(22, 34, 92));
+    pt.text(c + Vec2::new(0.0, 14.0), Align2::CENTER_CENTER, "COMPRESSOR", FontId::proportional(8.5), Color32::from_rgb(70, 82, 130));
+}
+
 /// Il rack: unità orizzontali impilate, nell'ordine del segnale.
 fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, shared: &Shared, part: u8) {
     let green = Color32::from_rgb(90, 220, 90);
@@ -865,42 +1100,8 @@ fn rack(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsParams, 
 
     // COMPRESSORE
     if part != 1 {
-        rack_unit(ui, setter, state, 8, 176.0, "COMPRESSORE", "MASTER DYNAMICS", Some(&p.cmp_on), Some(&p.cmp_mode), Some(5), |ui, s, th| {
-            let q = &p.sets[s];
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    knob(ui, setter, &q.cmp_thr, "SOGLIA", 38.0, K_COMP, th);
-                    knob(ui, setter, &q.cmp_ratio, "RATIO", 38.0, K_COMP, th);
-                    knob(ui, setter, &q.cmp_att, "ATTACCO", 38.0, K_COMP, th);
-                    ui.vertical(|ui| {
-                        ui.add_space(14.0);
-                        toggle(ui, setter, &q.cmp_att_auto, "AUTO", th, green);
-                    });
-                    knob(ui, setter, &q.cmp_rel, "RILASCIO", 38.0, K_COMP, th);
-                    ui.vertical(|ui| {
-                        ui.add_space(14.0);
-                        toggle(ui, setter, &q.cmp_rel_auto, "AUTO", th, green);
-                    });
-                    knob(ui, setter, &q.cmp_mk, "MAKEUP", 38.0, K_COMP, th);
-                    knob(ui, setter, &q.cmp_mix, "MIX", 38.0, K_COMP, th);
-                });
-                ui.horizontal(|ui| {
-                    knob(ui, setter, &q.cmp_tilt, "TONO", 34.0, K_COMP, th);
-                    knob(ui, setter, &q.cmp_tilt_f, "FREQ", 34.0, K_COMP, th);
-                    ui.add_space(14.0);
-                    knob(ui, setter, &q.cmp_sc_db, "SC FILTRO", 34.0, K_COMP, th);
-                    knob(ui, setter, &q.cmp_sc_f, "SC FREQ", 34.0, K_COMP, th);
-                    ui.add_space(14.0);
-                    ui.vertical(|ui| {
-                        ui.add_space(8.0);
-                        toggle(ui, setter, &q.cmp_ff, "AVANTI", th, amber);
-                        toggle(ui, setter, &q.cmp_xf, "TRAFO", th, amber);
-                    });
-                });
-            });
-            let gr = shared.comp_gr.load(Relaxed);
-            vu_meter(ui, 150.0, 120.0, "GAIN REDUCTION", gr, 0.0, 12.0, &[(0.0, "0"), (3.0, "3"), (6.0, "6"), (9.0, "9"), (12.0, "12")], 9.0);
-        });
+        comp_panel(ui, setter, state, p, shared);
+        ui.add_space(5.0);
     }
 
     if part != 1 {
