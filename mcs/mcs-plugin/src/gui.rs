@@ -1299,7 +1299,7 @@ pub fn draw(
                         .color(Color32::from_rgb(190, 180, 160)),
                 );
                 ui.label(
-                    egui::RichText::new("v12 EQ")
+                    egui::RichText::new("v13 ORO")
                         .size(11.0)
                         .color(Color32::from_rgb(120, 200, 120)),
                 );
@@ -2372,6 +2372,519 @@ fn tone_panel(ui: &mut Ui, setter: &ParamSetter, state: &mut GuiState, p: &McsPa
     );
 }
 
+// ---------- Pannello clipper: oro lucido, riquadri neri, manopola grande nera, LED ----------
+
+/// Manopola nera lucida con scala numerica.
+fn black_knob(
+    ui: &mut Ui,
+    setter: &ParamSetter,
+    p: &FloatParam,
+    id: egui::Id,
+    c: Pos2,
+    r: f32,
+    caption: &str,
+) {
+    let hit = Rect::from_center_size(c, Vec2::splat(r * 2.0 + 8.0));
+    let resp = ui.interact(hit, id, Sense::click_and_drag());
+    if resp.drag_started() {
+        setter.begin_set_parameter(p);
+    }
+    if resp.dragged() {
+        let k = if ui.input(|i| i.modifiers.shift) {
+            0.0008
+        } else {
+            0.006
+        };
+        let v = (p.unmodulated_normalized_value() - resp.drag_delta().y * k).clamp(0.0, 1.0);
+        setter.set_parameter_normalized(p, v);
+    }
+    if resp.drag_stopped() {
+        setter.end_set_parameter(p);
+    }
+    if resp.double_clicked() {
+        setter.begin_set_parameter(p);
+        setter.set_parameter_normalized(p, p.default_normalized_value());
+        setter.end_set_parameter(p);
+    }
+    let norm = p.unmodulated_normalized_value();
+    let pt = ui.painter();
+    let white = Color32::from_rgb(214, 216, 222);
+    let start = 0.75 * PI;
+    let sweep = 1.5 * PI;
+    for i in 0..=10 {
+        let a = start + sweep * (i as f32 / 10.0);
+        let d = Vec2::new(a.cos(), a.sin());
+        let len = if i % 5 == 0 { 7.0 } else { 4.5 };
+        pt.line_segment(
+            [c + d * (r + 3.0), c + d * (r + 3.0 + len)],
+            Stroke::new(1.0_f32, white.gamma_multiply(0.6)),
+        );
+    }
+    for i in 0..5 {
+        let n = i as f32 / 4.0;
+        let a = start + sweep * n;
+        let d = Vec2::new(a.cos(), a.sin());
+        pt.text(
+            c + d * (r + 15.0),
+            Align2::CENTER_CENTER,
+            p.normalized_value_to_string(n, false),
+            FontId::proportional(8.0),
+            white,
+        );
+    }
+    pt.circle_filled(
+        c + Vec2::new(3.0, 6.0),
+        r * 1.05,
+        Color32::from_black_alpha(110),
+    );
+    shaded_disc(
+        pt,
+        c,
+        r,
+        Color32::from_rgb(78, 80, 86),
+        Color32::from_rgb(4, 4, 6),
+        Vec2::new(-0.16, -0.22),
+    );
+    pt.circle_stroke(c, r, Stroke::new(1.5_f32, Color32::from_rgb(120, 122, 130)));
+    pt.circle_stroke(
+        c,
+        r * 0.86,
+        Stroke::new(1.0_f32, Color32::from_white_alpha(18)),
+    );
+    // riflesso lucido in alto a sinistra
+    pt.circle_filled(
+        c + Vec2::new(-r * 0.30, -r * 0.40),
+        r * 0.24,
+        Color32::from_white_alpha(26),
+    );
+    pt.circle_filled(
+        c + Vec2::new(-r * 0.34, -r * 0.46),
+        r * 0.10,
+        Color32::from_white_alpha(46),
+    );
+    let a = start + sweep * norm;
+    let d = Vec2::new(a.cos(), a.sin());
+    pt.line_segment(
+        [c + d * (r * 0.50), c + d * (r * 0.92)],
+        Stroke::new(3.0_f32, Color32::from_rgb(246, 246, 250)),
+    );
+    pt.text(
+        c + Vec2::new(0.0, r + 28.0),
+        Align2::CENTER_CENTER,
+        caption,
+        FontId::proportional(10.5),
+        Color32::from_rgb(236, 238, 244),
+    );
+    pt.text(
+        c + Vec2::new(0.0, r + 40.0),
+        Align2::CENTER_CENTER,
+        p.normalized_value_to_string(norm, true),
+        FontId::monospace(8.5),
+        Color32::from_rgb(120, 230, 120),
+    );
+}
+
+/// Pulsante tondo nero con anello luminoso.
+fn black_btn(ui: &mut Ui, id: egui::Id, c: Pos2, label: &str, on: bool, led: Color32) -> bool {
+    let resp = ui.interact(
+        Rect::from_center_size(c, Vec2::splat(26.0)),
+        id,
+        Sense::click(),
+    );
+    let p = ui.painter();
+    p.circle_filled(
+        c + Vec2::new(2.0, 3.0),
+        12.0,
+        Color32::from_black_alpha(120),
+    );
+    if on {
+        p.circle_filled(c, 17.0, led.gamma_multiply(0.18));
+    }
+    shaded_disc(
+        p,
+        c,
+        11.5,
+        Color32::from_rgb(86, 88, 94),
+        Color32::from_rgb(6, 6, 8),
+        Vec2::new(-0.14, -0.20),
+    );
+    p.circle_stroke(
+        c,
+        11.5,
+        Stroke::new(
+            1.5_f32,
+            if on {
+                led
+            } else {
+                Color32::from_rgb(70, 72, 78)
+            },
+        ),
+    );
+    p.circle_filled(
+        c + Vec2::new(-3.5, -4.5),
+        2.6,
+        Color32::from_white_alpha(40),
+    );
+    let col = if resp.hovered() {
+        Color32::WHITE
+    } else {
+        Color32::from_rgb(214, 216, 222)
+    };
+    p.text(
+        c + Vec2::new(0.0, 21.0),
+        Align2::CENTER_CENTER,
+        label,
+        FontId::proportional(8.5),
+        col,
+    );
+    resp.clicked()
+}
+
+fn black_panel(pt: &egui::Painter, r: Rect) {
+    pt.rect_filled(
+        r.translate(Vec2::new(2.0, 3.0)),
+        10.0,
+        Color32::from_black_alpha(90),
+    );
+    pt.rect_filled(r, 10.0, Color32::from_rgb(8, 8, 10));
+    pt.rect_filled(
+        Rect::from_min_size(
+            r.min + Vec2::new(6.0, 2.0),
+            Vec2::new(r.width() - 12.0, 1.5),
+        ),
+        1.0,
+        Color32::from_white_alpha(22),
+    );
+    pt.rect_stroke(
+        r,
+        10.0,
+        Stroke::new(1.0_f32, Color32::from_rgb(40, 40, 46)),
+        StrokeKind::Inside,
+    );
+}
+
+fn clip_panel(
+    ui: &mut Ui,
+    setter: &ParamSetter,
+    state: &mut GuiState,
+    p: &McsParams,
+    shared: &Shared,
+) {
+    let w = ui.available_width().clamp(640.0, 960.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 214.0), Sense::hover());
+    let mode = p.clip_mode.value();
+    if mode == ModeP::St {
+        state.set_sel[4] = 0;
+    }
+    let s = state.set_sel[4];
+    let q = &p.sets[s];
+
+    // piastra d'oro lucido con riflessi
+    {
+        let pt = ui.painter_at(rect);
+        gradient_rect(
+            &pt,
+            rect,
+            Color32::from_rgb(244, 212, 118),
+            Color32::from_rgb(150, 108, 36),
+        );
+        let mid = Rect::from_min_max(
+            Pos2::new(rect.left(), rect.top() + rect.height() * 0.30),
+            Pos2::new(rect.right(), rect.top() + rect.height() * 0.46),
+        );
+        gradient_rect(
+            &pt,
+            mid,
+            Color32::from_rgba_unmultiplied(255, 244, 200, 70),
+            Color32::from_rgba_unmultiplied(255, 244, 200, 0),
+        );
+        let x1 = rect.left() + rect.width() * 0.62;
+        pt.add(egui::Shape::convex_polygon(
+            vec![
+                Pos2::new(x1, rect.top()),
+                Pos2::new(x1 + 90.0, rect.top()),
+                Pos2::new(x1 + 30.0, rect.bottom()),
+                Pos2::new(x1 - 60.0, rect.bottom()),
+            ],
+            Color32::from_white_alpha(20),
+            Stroke::NONE,
+        ));
+        gold_mottle(&pt, rect);
+        pt.rect_stroke(
+            rect,
+            3.0,
+            Stroke::new(1.5_f32, Color32::from_rgb(92, 62, 14)),
+            StrokeKind::Inside,
+        );
+        for yy in [rect.top() + 24.0, rect.bottom() - 24.0] {
+            for x in [rect.left() + 14.0, rect.right() - 14.0] {
+                let sl = Rect::from_center_size(Pos2::new(x, yy), Vec2::new(20.0, 10.0));
+                pt.rect_filled(
+                    sl.translate(Vec2::new(0.0, 1.0)),
+                    5.0,
+                    Color32::from_white_alpha(70),
+                );
+                pt.rect_filled(sl, 5.0, Color32::from_rgb(20, 16, 10));
+            }
+        }
+        pt.text(
+            Pos2::new(rect.left() + 14.0, rect.center().y),
+            Align2::CENTER_CENTER,
+            "",
+            FontId::proportional(8.0),
+            Color32::BLACK,
+        );
+    }
+    let inner = Rect::from_min_max(
+        rect.min + Vec2::new(42.0, 10.0),
+        rect.max - Vec2::new(42.0, 24.0),
+    );
+    let gap = 8.0;
+    let avail = inner.width() - gap * 3.0;
+    let (mw, dw, kw) = (avail * 0.36, avail * 0.20, avail * 0.14);
+    let bw = avail - mw - dw - kw;
+    let h = inner.height();
+    let top = inner.top();
+    let r_m = Rect::from_min_size(inner.min, Vec2::new(mw, h));
+    let r_d = Rect::from_min_size(Pos2::new(r_m.right() + gap, top), Vec2::new(dw, h));
+    let r_k = Rect::from_min_size(Pos2::new(r_d.right() + gap, top), Vec2::new(kw, h));
+    let r_b = Rect::from_min_size(Pos2::new(r_k.right() + gap, top), Vec2::new(bw, h));
+    {
+        let pt = ui.painter();
+        for r in [r_m, r_d, r_k, r_b] {
+            black_panel(pt, r);
+        }
+        let ink = Color32::from_rgb(92, 62, 14);
+        pt.text(
+            Pos2::new(rect.left() + 56.0, rect.bottom() - 11.0),
+            Align2::LEFT_CENTER,
+            "M C S   S O F T   C L I P P E R",
+            FontId::proportional(10.0),
+            ink,
+        );
+        pt.text(
+            Pos2::new(rect.right() - 56.0, rect.bottom() - 11.0),
+            Align2::RIGHT_CENTER,
+            "OVERSAMPLED",
+            FontId::proportional(9.0),
+            ink,
+        );
+    }
+
+    // misuratori a LED: sinistra e destra
+    {
+        const T: [f32; 31] = [
+            -48.0, -44.0, -40.0, -36.0, -33.0, -30.0, -28.0, -26.0, -24.0, -22.0, -20.0, -19.0,
+            -18.0, -17.0, -16.0, -15.0, -14.0, -13.0, -12.0, -11.0, -10.0, -9.0, -8.0, -7.0, -6.0,
+            -5.0, -4.0, -3.0, -2.0, -1.0, 0.0,
+        ];
+        let pt = ui.painter();
+        let lv = [shared.peak_l.load(Relaxed), shared.peak_r.load(Relaxed)];
+        let dbs = [
+            20.0 * lv[0].max(1e-6).log10(),
+            20.0 * lv[1].max(1e-6).log10(),
+        ];
+        let x0 = r_m.left() + 26.0;
+        let step = (r_m.width() - 40.0) / T.len() as f32;
+        pt.text(
+            Pos2::new(r_m.left() + 14.0, top + 16.0),
+            Align2::LEFT_CENTER,
+            "PICCO",
+            FontId::proportional(10.0),
+            Color32::from_rgb(230, 232, 238),
+        );
+        let mx = dbs[0].max(dbs[1]);
+        let rd = Rect::from_center_size(
+            Pos2::new(r_m.right() - 48.0, top + 16.0),
+            Vec2::new(70.0, 20.0),
+        );
+        pt.rect_filled(rd, 4.0, Color32::from_rgb(26, 4, 4));
+        pt.text(
+            rd.center(),
+            Align2::CENTER_CENTER,
+            if mx > -60.0 {
+                format!("{:.1}", mx)
+            } else {
+                "--".to_string()
+            },
+            FontId::monospace(13.0),
+            Color32::from_rgb(255, 70, 50),
+        );
+        for (row, name) in ["L", "R"].iter().enumerate() {
+            let y = top + 66.0 + row as f32 * 54.0;
+            pt.text(
+                Pos2::new(r_m.left() + 12.0, y),
+                Align2::CENTER_CENTER,
+                *name,
+                FontId::proportional(10.0),
+                Color32::from_rgb(190, 192, 200),
+            );
+            for (i, t) in T.iter().enumerate() {
+                let pos = Pos2::new(x0 + step * (i as f32 + 0.5), y);
+                let base = if *t <= -9.0 {
+                    Color32::from_rgb(60, 230, 70)
+                } else if *t <= -5.0 {
+                    Color32::from_rgb(240, 210, 60)
+                } else {
+                    Color32::from_rgb(250, 60, 50)
+                };
+                if dbs[row] >= *t {
+                    pt.circle_filled(pos, 5.2, base.gamma_multiply(0.22));
+                    pt.circle_filled(pos, 3.0, base);
+                } else {
+                    pt.circle_filled(pos, 2.6, mix(base, Color32::BLACK, 0.80));
+                }
+            }
+            for (i, t) in T.iter().enumerate() {
+                if i % 3 == 0 || i == T.len() - 1 {
+                    pt.text(
+                        Pos2::new(x0 + step * (i as f32 + 0.5), y + 14.0),
+                        Align2::CENTER_CENTER,
+                        format!("{:.0}", t),
+                        FontId::proportional(7.5),
+                        Color32::from_rgb(190, 192, 200),
+                    );
+                }
+            }
+        }
+        pt.text(
+            Pos2::new(r_m.center().x, top + h - 18.0),
+            Align2::CENTER_CENTER,
+            "LIVELLO IN dB",
+            FontId::proportional(8.5),
+            Color32::from_rgb(150, 152, 160),
+        );
+    }
+
+    let id = |n: &str| egui::Id::new(("ck", n, s));
+    // manopola grande: drive
+    let rk = (dw / 2.0 - 22.0).clamp(26.0, 50.0);
+    black_knob(
+        ui,
+        setter,
+        &q.clip_drive,
+        id("drive"),
+        Pos2::new(r_d.center().x, top + 84.0),
+        rk,
+        "DRIVE",
+    );
+    // manopole piccole: ceiling e mix
+    black_knob(
+        ui,
+        setter,
+        &q.clip_ceil,
+        id("ceil"),
+        Pos2::new(r_k.center().x, top + 46.0),
+        19.0,
+        "CEILING",
+    );
+    black_knob(
+        ui,
+        setter,
+        &q.clip_mix,
+        id("mix"),
+        Pos2::new(r_k.center().x, top + 128.0),
+        19.0,
+        "MIX",
+    );
+
+    // pulsanti: modello, post clip, attivo, modo
+    let green = Color32::from_rgb(60, 230, 70);
+    let amber = Color32::from_rgb(250, 190, 50);
+    let cw = r_b.width() / 4.0;
+    let bx = |i: usize| r_b.left() + cw * (i as f32 + 0.5);
+    let ys = [top + 30.0, top + 84.0, top + 138.0];
+    for (i, (v, name)) in [
+        (ClipP::Hard, "DURO"),
+        (ClipP::Tanh, "MORBIDO"),
+        (ClipP::Asym, "ASIMM."),
+        (ClipP::Atan, "ARCTAN"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        if black_btn(
+            ui,
+            id(name),
+            Pos2::new(bx(i), ys[0]),
+            name,
+            q.clip_model.value() == *v,
+            green,
+        ) {
+            setter.begin_set_parameter(&q.clip_model);
+            setter.set_parameter(&q.clip_model, *v);
+            setter.end_set_parameter(&q.clip_model);
+        }
+    }
+    if black_btn(
+        ui,
+        id("post"),
+        Pos2::new(bx(0), ys[1]),
+        "POST CLIP",
+        q.clip_post.value(),
+        amber,
+    ) {
+        param_toggle(setter, &q.clip_post);
+    }
+    if black_btn(
+        ui,
+        id("on"),
+        Pos2::new(bx(1), ys[1]),
+        "ATTIVO",
+        p.clip_on.value(),
+        green,
+    ) {
+        param_toggle(setter, &p.clip_on);
+    }
+    let sel_label = match mode {
+        ModeP::St => "--",
+        ModeP::Duo => {
+            if s == 0 {
+                "L"
+            } else {
+                "R"
+            }
+        }
+        ModeP::Ms => {
+            if s == 0 {
+                "MID"
+            } else {
+                "SIDE"
+            }
+        }
+    };
+    if black_btn(
+        ui,
+        id("sel"),
+        Pos2::new(bx(2), ys[1]),
+        sel_label,
+        mode != ModeP::St,
+        amber,
+    ) && mode != ModeP::St
+    {
+        state.set_sel[4] = 1 - state.set_sel[4];
+    }
+    for (i, (name, m)) in [("ST", ModeP::St), ("DUO", ModeP::Duo), ("MS", ModeP::Ms)]
+        .iter()
+        .enumerate()
+    {
+        if black_btn(
+            ui,
+            id(name),
+            Pos2::new(bx(i), ys[2]),
+            name,
+            mode == *m,
+            green,
+        ) && mode != *m
+        {
+            setter.begin_set_parameter(&p.clip_mode);
+            setter.set_parameter(&p.clip_mode, *m);
+            setter.end_set_parameter(&p.clip_mode);
+            state.set_sel[4] = 0;
+        }
+    }
+}
+
 /// Il rack: unità orizzontali impilate, nell'ordine del segnale.
 fn rack(
     ui: &mut Ui,
@@ -2513,57 +3026,8 @@ fn rack(
         );
 
         // CLIPPER
-        rack_unit(
-            ui,
-            setter,
-            state,
-            5,
-            168.0,
-            "CLIPPER",
-            "OVERSAMPLED SOFT CLIPPER",
-            Some(&p.clip_on),
-            Some(&p.clip_mode),
-            Some(4),
-            |ui, s, _th| {
-                let q = &p.sets[s];
-                let bw = ui.available_width();
-                ui.vertical(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
-                    ui.horizontal(|ui| {
-                        for (param, name) in [
-                            (&q.clip_drive, "DRIVE"),
-                            (&q.clip_ceil, "CEILING"),
-                            (&q.clip_mix, "MIX"),
-                        ] {
-                            inset_panel(ui, 70.0, 98.0, "", |ui| {
-                                knob(ui, setter, param, name, 38.0, K_CLIPG, INNER);
-                            });
-                        }
-                        inset_panel(ui, 112.0, 98.0, "MODELLO", |ui| {
-                            let green = Color32::from_rgb(60, 220, 70);
-                            for (v, name) in [
-                                (ClipP::Hard, "DURO"),
-                                (ClipP::Tanh, "MORBIDO"),
-                                (ClipP::Asym, "ASIMM."),
-                                (ClipP::Atan, "ARCTAN"),
-                            ] {
-                                if led_choice(ui, 98.0, name, q.clip_model.value() == v, green) {
-                                    setter.begin_set_parameter(&q.clip_model);
-                                    setter.set_parameter(&q.clip_model, v);
-                                    setter.end_set_parameter(&q.clip_model);
-                                }
-                            }
-                            if led_choice(ui, 98.0, "POST CLIP", q.clip_post.value(), amber) {
-                                setter.begin_set_parameter(&q.clip_post);
-                                setter.set_parameter(&q.clip_post, !q.clip_post.value());
-                                setter.end_set_parameter(&q.clip_post);
-                            }
-                        });
-                    });
-                    led_ladder(ui, bw, shared);
-                });
-            },
-        );
+        clip_panel(ui, setter, state, p, shared);
+        ui.add_space(5.0);
 
         // OUTPUT
         rack_unit(
